@@ -4,13 +4,10 @@ import csv
 import json
 import os
 import shutil
-from datetime import datetime
 
 import yaml
 import optuna
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import matplotlib.pyplot as plt
 
 from optuna.visualization.matplotlib import (
@@ -19,17 +16,7 @@ from optuna.visualization.matplotlib import (
     plot_slice,
 )
 
-from model import RegimeAwareTCN
-from train import (
-    EarlyStopping,
-    _build_loaders,
-    count_labels,
-    should_use_healthy_only,
-    train_one_epoch,
-    collect_outputs,
-    fit_hybrid_calibration,
-    evaluate_anomaly,
-)
+from train import run_training, collect_outputs, evaluate_anomaly
 from utils import load_config
 
 
@@ -132,8 +119,6 @@ def build_trial_config(base_config, trial, dataset):
     cfg["regime"]["reconstruction_beta"] = trial.suggest_float("reconstruction_beta", 0.0, 2.0)
     cfg["regime"]["threshold_percentile"] = trial.suggest_float("threshold_percentile", 85.0, 99.0)
 
-    # C-MAPSS label sparsity can strongly affect the anomaly definition. Keep it
-    # tunable, but constrained to sensible health/anomaly boundaries.
     if dataset.upper() == "CMAPSS":
         cfg["regime"]["cmapss_normal_rul"] = trial.suggest_categorical("cmapss_normal_rul", [80, 100, 120, 130])
         cfg["regime"]["cmapss_anomaly_rul"] = trial.suggest_categorical("cmapss_anomaly_rul", [20, 30, 40])
@@ -141,110 +126,31 @@ def build_trial_config(base_config, trial, dataset):
     return cfg
 
 
-def run_trial(cfg, dataset, trial_dir):
+def run_trial(cfg, dataset, trial_dir, fd=None):
     os.makedirs(trial_dir, exist_ok=True)
     save_yaml(cfg, os.path.join(trial_dir, "config.yaml"))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, val_loader, test_loader, meta = _build_loaders(dataset, cfg)
+    result = run_training(cfg, dataset, fd=fd, verbose=False)
+    model, criterion, device = result["model"], result["criterion"], result["device"]
+    calibration = result["calibration"]
 
-    print("[loader] train label counts:", count_labels(train_loader))
-    print("[loader] val label counts:", count_labels(val_loader))
-    print("[loader] test label counts:", count_labels(test_loader))
-
-    train_cfg = cfg["training"]
-    model_cfg = cfg["model"]
-    regime_cfg = cfg.get("regime", {})
-    input_dim = train_loader.dataset.X.shape[-1]
-
-    model = RegimeAwareTCN(
-        input_dim=input_dim,
-        channels=model_cfg["channels"],
-        kernel_size=model_cfg["kernel_size"],
-        dropout=model_cfg["dropout"],
-        n_regimes=regime_cfg.get("n_regimes", 3),
-    ).to(device)
-
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=train_cfg["lr"])
-    early_stopper = EarlyStopping(
-        patience=train_cfg.get("patience", 5),
-        min_delta=train_cfg.get("min_delta", 0.0),
-    )
-
-    use_healthy_only = should_use_healthy_only(
-        train_loader,
-        requested=train_cfg.get("healthy_only", True),
-        min_normal_windows=train_cfg.get("min_normal_windows", 1),
-    )
-
-    best_val_loss = float("inf")
-    best_state = None
-    train_losses, val_losses = [], []
-
-    for epoch in range(1, train_cfg["epochs"] + 1):
-        train_loss = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, train_cfg,
-            healthy_only=use_healthy_only,
-        )
-        _, val_residuals, _, _, val_labels, _ = collect_outputs(model, val_loader, criterion, device)
-        normal_val = val_residuals[val_labels == 0]
-        val_loss = float(normal_val.mean()) if len(normal_val) else float(val_residuals.mean())
-
-        train_losses.append(float(train_loss))
-        val_losses.append(float(val_loss))
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_state = {
-                "epoch": epoch,
-                "model_state": model.state_dict(),
-                "optimizer_state": optimizer.state_dict(),
-                "train_losses": train_losses,
-                "val_losses": val_losses,
-                "dataset": dataset.upper(),
-                "input_dim": input_dim,
-                "meta": meta,
-                "config": cfg,
-            }
-
-        early_stopper.step(val_loss)
-        if early_stopper.should_stop:
-            break
-
-    model.load_state_dict(best_state["model_state"])
-
-    _, calib_res, calib_rec, calib_feat, calib_labels, calib_regimes = collect_outputs(
-        model, train_loader, criterion, device
-    )
-    calibration = fit_hybrid_calibration(
-        calib_res,
-        calib_rec,
-        calib_feat,
-        calib_labels,
-        calib_regimes,
-        n_regimes=regime_cfg.get("n_regimes", 3),
-        latent_alpha=regime_cfg.get("latent_alpha", 1.0),
-        reconstruction_beta=regime_cfg.get("reconstruction_beta", 0.5),
-        threshold_percentile=regime_cfg.get("threshold_percentile", 90.0),
-    )
-
-    _, val_res, val_rec, val_feat, val_labels, val_regimes = collect_outputs(model, val_loader, criterion, device)
+    _, val_res, val_rec, val_feat, val_labels, val_regimes = collect_outputs(model, result["val_loader"], criterion, device)
     val_metrics = evaluate_anomaly(val_res, val_rec, val_feat, val_labels, val_regimes, calibration)
 
-    _, test_res, test_rec, test_feat, test_labels, test_regimes = collect_outputs(model, test_loader, criterion, device)
+    _, test_res, test_rec, test_feat, test_labels, test_regimes = collect_outputs(model, result["test_loader"], criterion, device)
     test_metrics = evaluate_anomaly(test_res, test_rec, test_feat, test_labels, test_regimes, calibration)
 
-    best_state["calibration"] = calibration
-    best_state["val_metrics"] = {k: float(v) for k, v in val_metrics.items() if k not in {"scores", "pred", "labels", "regimes", "residual_z", "latent_z", "recon_z"}}
-    best_state["test_metrics"] = {k: float(v) for k, v in test_metrics.items() if k not in {"scores", "pred", "labels", "regimes", "residual_z", "latent_z", "recon_z"}}
+    excluded = {"scores", "pred", "labels", "regimes", "residual_z", "latent_z", "recon_z"}
+    checkpoint = result["checkpoint"]
+    checkpoint["val_metrics"] = {k: float(v) for k, v in val_metrics.items() if k not in excluded}
+    checkpoint["test_metrics"] = {k: float(v) for k, v in test_metrics.items() if k not in excluded}
 
     ckpt_path = os.path.join(trial_dir, "best_model.ckpt")
-    torch.save(best_state, ckpt_path)
+    torch.save(checkpoint, ckpt_path)
 
     summary = {
-        "best_epoch": int(best_state["epoch"]),
-        "best_val_forecast_mse": float(best_val_loss),
+        "best_epoch": int(checkpoint["epoch"]),
+        "best_val_forecast_mse": float(result["best_val_loss"]),
         "val_f1": float(val_metrics["f1"]),
         "val_precision": float(val_metrics["precision"]),
         "val_recall": float(val_metrics["recall"]),
@@ -302,6 +208,10 @@ def write_study_summary(study, args, run_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="CMAPSS", choices=["CBM", "CMAPSS"])
+    parser.add_argument(
+        "--fd", type=str, default=None, choices=["FD001", "FD002", "FD003", "FD004"],
+        help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd). Fixed for the whole study, not searched.",
+    )
     parser.add_argument("--config", type=str, default="./config.yaml")
     parser.add_argument("--n_trials", type=int, default=50)
     parser.add_argument(
@@ -322,9 +232,14 @@ def main():
     args = parser.parse_args()
 
     base_config = load_config(args.config)
+    resolved_fd = args.fd or base_config.get("data", {}).get("cmapss_fd", "FD003")
 
-    # Stable study/run names: rerunning the same dataset continues the same search.
-    study_name = args.study_name or f"{args.dataset.upper()}_regime_tuning"
+    if args.study_name:
+        study_name = args.study_name
+    elif args.dataset.upper() == "CMAPSS":
+        study_name = f"CMAPSS_{resolved_fd}_regime_tuning"
+    else:
+        study_name = f"{args.dataset.upper()}_regime_tuning"
     run_dir = os.path.join(args.out_dir, study_name)
     trials_dir = os.path.join(run_dir, "trials")
     plots_dir = os.path.join(run_dir, "plots")
@@ -361,7 +276,7 @@ def main():
         trial_dir = os.path.join(trials_dir, f"trial_{trial.number:03d}")
         cfg = build_trial_config(base_config, trial, args.dataset)
         try:
-            summary = run_trial(cfg, args.dataset, trial_dir)
+            summary = run_trial(cfg, args.dataset, trial_dir, fd=args.fd)
         except Exception as exc:
             os.makedirs(trial_dir, exist_ok=True)
             save_json({"error": str(exc)}, os.path.join(trial_dir, "error.json"))
@@ -392,7 +307,6 @@ def main():
 
     study.optimize(objective, n_trials=args.n_trials, callbacks=[after_trial_callback])
 
-    # Final refresh in case the run was very short or interrupted near the end.
     write_trials_csv(study, os.path.join(run_dir, "trials.csv"))
     save_optuna_plots(study, plots_dir)
     write_study_summary(study, args, run_dir)

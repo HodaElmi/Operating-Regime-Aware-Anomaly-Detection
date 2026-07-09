@@ -1,5 +1,4 @@
 model:
-  # Slightly higher capacity than the initial lightweight TCN, but still compact.
   channels: [64, 64, 128, 128]
   kernel_size: 5
   dropout: 0.15
@@ -15,29 +14,19 @@ training:
   healthy_only: true
   min_normal_windows: 1
 
-  # Multi-task training objective:
-  # total = forecast*MSE(next step) + reconstruction*MSE(input window) + regime*CE(regime id)
   forecast_loss_weight: 1.0
   reconstruction_loss_weight: 0.3
   regime_loss_weight: 0.1
 
 regime:
   n_regimes: 3
-  feature_idx: null              # null = use first 3 sensor/features for regime clustering
-
-  # C-MAPSS sparse anomaly definition:
-  # normal:  RUL > cmapss_normal_rul
-  # ignore:  cmapss_anomaly_rul < RUL <= cmapss_normal_rul
-  # anomaly: RUL <= cmapss_anomaly_rul
-  # If your saved C-MAPSS labels are already 0/1/2, then 2=normal, 1=ignore, 0=anomaly.
+  feature_idx: null             
   cmapss_normal_rul: 100
   cmapss_anomaly_rul: 30
 
-  # Hybrid regime-normalized score:
-  # score = z_forecast + latent_alpha*z_latent_distance + reconstruction_beta*z_reconstruction
   latent_alpha: 1.0
   reconstruction_beta: 0.5
-  threshold_percentile: 90.0    # 90=more sensitive, 95=stricter, 99=very strict
+  threshold_percentile: 90.0   
 
 data:
   path: "./UCI CBM Dataset/data.txt"
@@ -45,6 +34,6 @@ data:
   split_val: 0.15
   split_test: 0.15
 
-  cmapss_train_path: "./CMAPSSData/train_1.npy"
-  cmapss_test_path: "./CMAPSSData/test_1.npy"
+  cmapss_fd: "FD003"
+  cmapss_data_dir: "./CMAPSSData"
   val_split: 0.2

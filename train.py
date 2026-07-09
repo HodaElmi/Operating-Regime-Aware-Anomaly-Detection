@@ -8,7 +8,17 @@ import torch.optim as optim
 
 from model import RegimeAwareTCN
 from data_pipeline import build_cbm_dataloaders, build_cmapss_dataloaders
-from utils import load_config, plot_loss_curves
+from utils import (
+    load_config,
+    dataset_tag,
+    figures_dir_for,
+    plot_loss_curves,
+    plot_rul_histogram,
+    plot_score_timeline,
+    plot_score_distribution_by_regime,
+    plot_confusion_binary,
+    plot_roc_curve,
+)
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -46,7 +56,7 @@ def compute_training_loss(outputs, X, target, regime, criterion, cfg):
     return loss, forecast_loss, recon_loss, regime_loss
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device, train_cfg, healthy_only=True):
+def train_one_epoch(model, loader, criterion, optimizer, device, train_cfg, healthy_only = True):
     model.train()
     total_loss = 0.0
     total_count = 0
@@ -66,7 +76,7 @@ def train_one_epoch(model, loader, criterion, optimizer, device, train_cfg, heal
             regime = regime[keep]
 
         optimizer.zero_grad()
-        outputs = model(X)
+        outputs = model(X, regime)
         loss, _, _, _ = compute_training_loss(outputs, X, target, regime, criterion, train_cfg)
         loss.backward()
         optimizer.step()
@@ -78,7 +88,6 @@ def train_one_epoch(model, loader, criterion, optimizer, device, train_cfg, heal
 
 
 def collect_outputs(model, loader, criterion, device):
-    """Collect forecast residuals, reconstruction errors, latent features, labels, and regimes."""
     model.eval()
     total_loss = 0.0
     total_count = 0
@@ -88,14 +97,16 @@ def collect_outputs(model, loader, criterion, device):
         for X, target, label, regime in loader:
             X = X.to(device)
             target = target.to(device)
-            outputs = model(X)
+            regime = regime.to(device)
+            outputs = model(X, regime)
 
             forecast = outputs["forecast"]
             recon = outputs["reconstruction"]
             features = outputs["features"]
 
             loss = criterion(forecast, target)
-            residual = torch.mean((forecast - target) ** 2, dim=1)
+
+            residual = forecast - target
             recon_error = torch.mean((recon - X) ** 2, dim=(1, 2))
 
             total_loss += loss.item() * X.size(0)
@@ -105,7 +116,7 @@ def collect_outputs(model, loader, criterion, device):
             all_recon_errors.append(recon_error.cpu().numpy())
             all_features.append(features.cpu().numpy())
             all_labels.append(label.numpy())
-            all_regimes.append(regime.numpy())
+            all_regimes.append(regime.cpu().numpy())
 
     return (
         total_loss / max(total_count, 1),
@@ -127,8 +138,7 @@ def _robust_center_scale(values):
     return center, scale
 
 
-def fit_latent_centroids(features, labels, regimes, n_regimes=3):
-    """Fit one healthy latent centroid per regime, with global fallback."""
+def fit_latent_centroids(features, labels, regimes, n_regimes = 3):
     normal_idx = labels == 0
     if normal_idx.sum() == 0:
         raise ValueError("No normal training windows found for latent centroid calibration.")
@@ -144,6 +154,61 @@ def fit_latent_centroids(features, labels, regimes, n_regimes=3):
             centroids[int(r)] = features[idx].mean(axis=0)
 
     return centroids
+
+
+def _fit_covariance_models(vectors, labels, regimes, n_regimes = 3, ridge = 1e-3):
+    vectors = np.asarray(vectors, dtype=float)
+    if vectors.ndim == 1:
+        vectors = vectors[:, None]
+
+    normal_idx = labels == 0
+    healthy = vectors[normal_idx]
+    if len(healthy) == 0:
+        raise ValueError("No normal samples found for covariance calibration.")
+
+    def fit_one(vals):
+        vals = np.asarray(vals, dtype=float)
+        mean = vals.mean(axis=0)
+        if len(vals) <= 1:
+            cov = np.eye(vals.shape[1], dtype=float)
+        else:
+            cov = np.cov(vals, rowvar=False)
+            cov = np.atleast_2d(cov)
+        cov = cov + ridge * np.eye(cov.shape[0])
+        inv_cov = np.linalg.pinv(cov)
+        return mean, inv_cov
+
+    global_mean, global_inv_cov = fit_one(healthy)
+    models = {}
+    min_samples = max(healthy.shape[1] + 2, 8)
+
+    for r in range(n_regimes):
+        idx = normal_idx & (regimes == r)
+        vals = vectors[idx]
+        fallback = len(vals) < min_samples
+        if fallback:
+            mean, inv_cov = global_mean, global_inv_cov
+        else:
+            mean, inv_cov = fit_one(vals)
+        models[int(r)] = {
+            "mean": mean,
+            "inv_cov": inv_cov,
+            "n_normal": int(idx.sum()),
+            "fallback_global_cov": bool(fallback),
+        }
+    return models
+
+
+def _mahalanobis_distance(vectors, regimes, cov_models):
+    vectors = np.asarray(vectors, dtype=float)
+    if vectors.ndim == 1:
+        vectors = vectors[:, None]
+    distances = np.zeros(len(vectors), dtype=float)
+    for i, (vec, regime) in enumerate(zip(vectors, regimes)):
+        model = cov_models[int(regime)]
+        diff = vec - model["mean"]
+        distances[i] = float(np.sqrt(max(diff @ model["inv_cov"] @ diff.T, 0.0)))
+    return distances
 
 
 def compute_latent_distance(features, regimes, centroids):
@@ -195,40 +260,71 @@ def apply_regime_normalizers(values, regimes, normalizers):
     return z
 
 
+def tune_threshold(train_scores, train_labels, val_scores = None, val_labels = None, percentile = 90.0):
+    normal_train_scores = train_scores[train_labels == 0]
+    threshold = float(np.percentile(normal_train_scores, percentile))
+    source = "train_healthy_percentile"
+    best_f1 = None
+
+    if val_scores is not None and val_labels is not None and len(np.unique(val_labels)) == 2:
+        candidates = np.unique(np.percentile(val_scores, np.linspace(1, 99, 197)))
+        best_f1, best_thr = -1.0, threshold
+        for thr in candidates:
+            pred = (val_scores > thr).astype(int)
+            f1 = f1_score(val_labels, pred, zero_division=0)
+            if f1 > best_f1:
+                best_f1, best_thr = float(f1), float(thr)
+        threshold, source, best_f1 = best_thr, "validation_f1_grid", float(best_f1)
+
+    return threshold, source, best_f1
+
+
 def fit_hybrid_calibration(
     residuals,
     recon_errors,
     features,
     labels,
     regimes,
-    n_regimes=3,
-    latent_alpha=1.0,
-    reconstruction_beta=0.5,
-    threshold_percentile=90.0,
+    n_regimes = 3,
+    latent_alpha = 1.0,
+    reconstruction_beta = 0.5,
+    threshold_percentile = 90.0,
+    val_residuals = None,
+    val_recon_errors = None,
+    val_features = None,
+    val_labels = None,
+    val_regimes = None,
 ):
-    """Fit regime-normalized hybrid score and one global threshold.
+    residual_cov = _fit_covariance_models(residuals, labels, regimes, n_regimes=n_regimes)
+    latent_cov = _fit_covariance_models(features, labels, regimes, n_regimes=n_regimes)
 
-    The detector stays unsupervised: centroids, normalizers, and threshold are
-    fitted only from healthy training windows. The final score is:
-        z_forecast + latent_alpha*z_latent + reconstruction_beta*z_reconstruction
-    """
-    centroids = fit_latent_centroids(features, labels, regimes, n_regimes=n_regimes)
-    latent_dist = compute_latent_distance(features, regimes, centroids)
+    residual_dist = _mahalanobis_distance(residuals, regimes, residual_cov)
+    latent_dist = _mahalanobis_distance(features, regimes, latent_cov)
 
-    residual_norm = fit_regime_normalizers(residuals, labels, regimes, n_regimes=n_regimes)
+    residual_norm = fit_regime_normalizers(residual_dist, labels, regimes, n_regimes=n_regimes)
     recon_norm = fit_regime_normalizers(recon_errors, labels, regimes, n_regimes=n_regimes)
     latent_norm = fit_regime_normalizers(latent_dist, labels, regimes, n_regimes=n_regimes)
 
-    residual_z = apply_regime_normalizers(residuals, regimes, residual_norm)
-    recon_z = apply_regime_normalizers(recon_errors, regimes, recon_norm)
-    latent_z = apply_regime_normalizers(latent_dist, regimes, latent_norm)
-    hybrid_z = residual_z + latent_alpha * latent_z + reconstruction_beta * recon_z
+    def score(res, rec, feat, reg):
+        rd = _mahalanobis_distance(res, reg, residual_cov)
+        ld = _mahalanobis_distance(feat, reg, latent_cov)
+        rz = apply_regime_normalizers(rd, reg, residual_norm)
+        cz = apply_regime_normalizers(rec, reg, recon_norm)
+        lz = apply_regime_normalizers(ld, reg, latent_norm)
+        return rz + latent_alpha * lz + reconstruction_beta * cz
 
-    normal_hybrid = hybrid_z[labels == 0]
-    threshold = float(np.percentile(normal_hybrid, threshold_percentile))
+    train_scores = score(residuals, recon_errors, features, regimes)
+    val_scores = None
+    if val_residuals is not None and val_labels is not None:
+        val_scores = score(val_residuals, val_recon_errors, val_features, val_regimes)
+
+    threshold, threshold_source, val_best_f1 = tune_threshold(
+        train_scores, labels, val_scores, val_labels, percentile=threshold_percentile
+    )
 
     return {
-        "centroids": centroids,
+        "residual_cov": residual_cov,
+        "latent_cov": latent_cov,
         "residual_norm": residual_norm,
         "recon_norm": recon_norm,
         "latent_norm": latent_norm,
@@ -236,13 +332,23 @@ def fit_hybrid_calibration(
         "reconstruction_beta": float(reconstruction_beta),
         "global_threshold": threshold,
         "threshold_percentile": float(threshold_percentile),
+        "threshold_source": threshold_source,
+        "val_best_f1": val_best_f1,
         "n_calib_normal": int((labels == 0).sum()),
+        "distance_type": "regime_mahalanobis",
     }
 
-
 def apply_hybrid_calibration(residuals, recon_errors, features, regimes, calibration):
-    latent_dist = compute_latent_distance(features, regimes, calibration["centroids"])
-    residual_z = apply_regime_normalizers(residuals, regimes, calibration["residual_norm"])
+    if "residual_cov" in calibration and "latent_cov" in calibration:
+        residual_dist = _mahalanobis_distance(residuals, regimes, calibration["residual_cov"])
+        latent_dist = _mahalanobis_distance(features, regimes, calibration["latent_cov"])
+    else:
+        residual_dist = np.asarray(residuals, dtype=float)
+        if residual_dist.ndim > 1:
+            residual_dist = np.mean(residual_dist ** 2, axis=1)
+        latent_dist = compute_latent_distance(features, regimes, calibration["centroids"])
+
+    residual_z = apply_regime_normalizers(residual_dist, regimes, calibration["residual_norm"])
     recon_z = apply_regime_normalizers(recon_errors, regimes, calibration["recon_norm"])
     latent_z = apply_regime_normalizers(latent_dist, regimes, calibration["latent_norm"])
     hybrid_z = (
@@ -253,7 +359,6 @@ def apply_hybrid_calibration(residuals, recon_errors, features, regimes, calibra
     pred = (hybrid_z > calibration["global_threshold"]).astype(int)
     return hybrid_z, pred, residual_z, latent_z, recon_z
 
-
 def count_labels(loader):
     labels = loader.dataset.label.numpy()
     unique, counts = np.unique(labels, return_counts=True)
@@ -261,7 +366,6 @@ def count_labels(loader):
 
 
 def should_use_healthy_only(loader, requested=True, min_normal_windows=1):
-    """Use true healthy-only training for unsupervised anomaly detection."""
     if not requested:
         return False
     labels = loader.dataset.label.numpy()
@@ -306,14 +410,14 @@ def evaluate_anomaly(residuals, recon_errors, features, labels, regimes, calibra
     }
 
 
-def _build_loaders(dataset, config):
+def _build_loaders(dataset, config, fd = None):
     data_cfg = config["data"]
     train_cfg = config["training"]
     regime_cfg = config.get("regime", {})
 
     if dataset.upper() == "CBM":
         return build_cbm_dataloaders(
-            path=data_cfg["path"],
+            path = data_cfg["path"],
             window_size=train_cfg["window_size"],
             stride=train_cfg["stride"],
             batch_size=train_cfg["batch_size"],
@@ -322,12 +426,13 @@ def _build_loaders(dataset, config):
             split_test=data_cfg.get("split_test", 0.15),
             n_regimes=regime_cfg.get("n_regimes", 3),
             regime_feature_idx=regime_cfg.get("feature_idx", None),
+            healthy_threshold=regime_cfg.get("cbm_healthy_threshold", 0.975),
         )
 
     if dataset.upper() == "CMAPSS":
         return build_cmapss_dataloaders(
-            train_path=data_cfg.get("cmapss_train_path", "./CMAPSSData/train_1.npy"),
-            test_path=data_cfg.get("cmapss_test_path", "./CMAPSSData/test_1.npy"),
+            fd=fd or data_cfg.get("cmapss_fd", "FD003"),
+            data_dir=data_cfg.get("cmapss_data_dir", "./CMAPSSData"),
             window_size=train_cfg["window_size"],
             stride=train_cfg["stride"],
             batch_size=train_cfg["batch_size"],
@@ -341,33 +446,41 @@ def _build_loaders(dataset, config):
     raise ValueError(f"Unknown dataset: {dataset}")
 
 
-def train_tcn(config_path="./config.yaml", dataset="CBM"):
-    config = load_config(config_path)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    train_loader, val_loader, test_loader, meta = _build_loaders(dataset, config)
-    print("[loader] train label counts:", count_labels(train_loader))
-    print("[loader] val label counts:", count_labels(val_loader))
-    print("[loader] test label counts:", count_labels(test_loader))
-    train_cfg = config["training"]
-    model_cfg = config["model"]
-    regime_cfg = config.get("regime", {})
-
-    input_dim = train_loader.dataset.X.shape[-1]
-
-    model = RegimeAwareTCN(
+def build_model(input_dim, model_cfg, regime_cfg):
+    return RegimeAwareTCN(
         input_dim=input_dim,
         channels=model_cfg["channels"],
         kernel_size=model_cfg["kernel_size"],
         dropout=model_cfg["dropout"],
         n_regimes=regime_cfg.get("n_regimes", 3),
-    ).to(device)
+    )
 
+
+def run_training(cfg, dataset, fd = None, device = None, verbose = True):
+    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    train_loader, val_loader, test_loader, meta = _build_loaders(dataset, cfg, fd = fd)
+    if verbose:
+        print("[loader] train label counts:", count_labels(train_loader))
+        print("[loader] val label counts:", count_labels(val_loader))
+        print("[loader] test label counts:", count_labels(test_loader))
+
+    train_cfg = cfg["training"]
+    model_cfg = cfg["model"]
+    regime_cfg = cfg.get("regime", {})
+    input_dim = train_loader.dataset.X.shape[-1]
+
+    model = build_model(input_dim, model_cfg, regime_cfg).to(device)
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=train_cfg["lr"])
     early_stopper = EarlyStopping(
         patience=train_cfg.get("patience", 5),
         min_delta=train_cfg.get("min_delta", 0.0),
+    )
+    use_healthy_only = should_use_healthy_only(
+        train_loader,
+        requested=train_cfg.get("healthy_only", True),
+        min_normal_windows=train_cfg.get("min_normal_windows", 1),
     )
 
     train_losses, val_losses = [], []
@@ -375,25 +488,23 @@ def train_tcn(config_path="./config.yaml", dataset="CBM"):
     best_checkpoint = None
 
     for epoch in range(1, train_cfg["epochs"] + 1):
-        print(f"\nEpoch {epoch}/{train_cfg['epochs']}")
+        if verbose:
+            print(f"\nEpoch {epoch}/{train_cfg['epochs']}")
 
-        use_healthy_only = should_use_healthy_only(
-            train_loader,
-            requested=train_cfg.get("healthy_only", True),
-            min_normal_windows=train_cfg.get("min_normal_windows", 64),
-        )
         train_loss = train_one_epoch(
             model, train_loader, criterion, optimizer, device, train_cfg,
             healthy_only=use_healthy_only,
         )
         _, val_residuals_epoch, _, _, val_labels_epoch, _ = collect_outputs(model, val_loader, criterion, device)
-        normal_val_scores = val_residuals_epoch[val_labels_epoch == 0]
-        val_loss = float(normal_val_scores.mean()) if len(normal_val_scores) else float(val_residuals_epoch.mean())
+        val_residual_mse = np.mean(val_residuals_epoch ** 2, axis=1)
+        normal_val_scores = val_residual_mse[val_labels_epoch == 0]
+        val_loss = float(normal_val_scores.mean()) if len(normal_val_scores) else float(val_residual_mse.mean())
 
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
-        print(f"Train Loss: {train_loss:.6f} | Val Forecast MSE: {val_loss:.6f}")
+        if verbose:
+            print(f"Train Loss: {train_loss:.6f} | Val Forecast MSE: {val_loss:.6f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -406,24 +517,22 @@ def train_tcn(config_path="./config.yaml", dataset="CBM"):
                 "dataset": dataset.upper(),
                 "input_dim": input_dim,
                 "meta": meta,
+                "config": cfg,
             }
 
         early_stopper.step(val_loss)
         if early_stopper.should_stop:
-            print(f"\nEarly stopping triggered at epoch {epoch}.")
+            if verbose:
+                print(f"\nEarly stopping triggered at epoch {epoch}.")
             break
 
-    os.makedirs("./model", exist_ok=True)
-    checkpoint_path = f"./model/best_{dataset.lower()}_regime_tcn.ckpt"
-    torch.save(best_checkpoint, checkpoint_path)
     model.load_state_dict(best_checkpoint["model_state"])
 
-    # Calibrate on healthy training windows rather than tail validation windows.
-    # This avoids missing-regime calibration when the validation tail contains
-    # no normal samples for one operating regime. The model is still trained
-    # healthy-only, so this remains unsupervised.
-    calib_loss, calib_residuals, calib_recon_errors, calib_features, calib_labels, calib_regimes = collect_outputs(
+    _, calib_residuals, calib_recon_errors, calib_features, calib_labels, calib_regimes = collect_outputs(
         model, train_loader, criterion, device
+    )
+    _, val_residuals, val_recon_errors, val_features, val_labels, val_regimes = collect_outputs(
+        model, val_loader, criterion, device
     )
     calibration = fit_hybrid_calibration(
         calib_residuals,
@@ -435,18 +544,70 @@ def train_tcn(config_path="./config.yaml", dataset="CBM"):
         latent_alpha=regime_cfg.get("latent_alpha", 1.0),
         reconstruction_beta=regime_cfg.get("reconstruction_beta", 0.5),
         threshold_percentile=regime_cfg.get("threshold_percentile", 90.0),
+        val_residuals=val_residuals,
+        val_recon_errors=val_recon_errors,
+        val_features=val_features,
+        val_labels=val_labels,
+        val_regimes=val_regimes,
     )
+    if verbose:
+        print(f"[calibration] distance={calibration['distance_type']} | threshold_source={calibration['threshold_source']} | threshold={calibration['global_threshold']:.4f}")
+        if calibration.get("val_best_f1") is not None:
+            print(f"[calibration] validation-tuned F1={calibration['val_best_f1']:.4f}")
 
     best_checkpoint["calibration"] = calibration
-    torch.save(best_checkpoint, checkpoint_path)
+
+    return {
+        "model": model,
+        "checkpoint": best_checkpoint,
+        "best_val_loss": best_val_loss,
+        "train_loader": train_loader,
+        "val_loader": val_loader,
+        "test_loader": test_loader,
+        "meta": meta,
+        "criterion": criterion,
+        "device": device,
+        "calibration": calibration,
+        "train_losses": train_losses,
+        "val_losses": val_losses,
+        "dataset": dataset.upper(),
+        "fd": (fd or cfg.get("data", {}).get("cmapss_fd", "FD003")).upper() if dataset.upper() == "CMAPSS" else None,
+    }
+
+
+def train_tcn(config_path = "./config.yaml", dataset = "CBM", fd = None):
+    config = load_config(config_path)
+    result = run_training(config, dataset, fd = fd, verbose = True)
+
+    os.makedirs("./model", exist_ok = True)
+    checkpoint_path = f"./model/best_{dataset.lower()}_regime_tcn.ckpt"
+    torch.save(result["checkpoint"], checkpoint_path)
     print(f"\nBest regime-aware model saved to: {checkpoint_path}")
 
-    plot_loss_curves(train_losses, val_losses)
+    figures_dir = figures_dir_for(result["dataset"], result["fd"])
+    plot_loss_curves(result["train_losses"], result["val_losses"], save_path=os.path.join(figures_dir, "loss.png"))
+    if result["dataset"] == "CMAPSS":
+        meta = result["meta"]
+        regime_cfg = config.get("regime", {})
+        plot_rul_histogram(
+            meta["train_rul"], meta["test_rul"],
+            normal_rul=regime_cfg.get("cmapss_normal_rul", 100),
+            anomaly_rul=regime_cfg.get("cmapss_anomaly_rul", 30),
+            save_path=os.path.join(figures_dir, "rul_distribution.png"),
+        )
 
-    return model, test_loader, criterion, device, calibration
+    return result["model"], result["test_loader"], result["criterion"], result["device"], result["calibration"]
 
 
-def test_model(model, test_loader, criterion, device, calibration):
+def _pick_representative_unit(unit_ids, labels):
+
+    anomalous = np.unique(unit_ids[labels == 1])
+    if len(anomalous) > 0:
+        return max(anomalous, key=lambda u: (labels[unit_ids == u] == 1).sum())
+    return unit_ids[0]
+
+
+def test_model(model, test_loader, criterion, device, calibration, dataset = "CBM", fd = None):
     print("\nRunning regime-aware anomaly detection evaluation.")
 
     test_loss, residuals, recon_errors, features, labels, regimes = collect_outputs(model, test_loader, criterion, device)
@@ -477,6 +638,24 @@ def test_model(model, test_loader, criterion, device, calibration):
             f"res_normals={calibration['residual_norm'][r].get('n_normal', 0)} | "
             f"rec_normals={calibration['recon_norm'][r].get('n_normal', 0)} | "
             f"lat_normals={calibration['latent_norm'][r].get('n_normal', 0)}"
+        )
+
+    figures_dir = figures_dir_for(dataset, fd)
+    threshold = calibration["global_threshold"]
+    plot_confusion_binary(labels, metrics["pred"], save_path = os.path.join(figures_dir, "confusion.png"))
+    plot_roc_curve(labels, metrics["scores"], save_path = os.path.join(figures_dir, "roc.png"), label = dataset_tag(dataset, fd))
+    plot_score_distribution_by_regime(
+        metrics["scores"], labels, regimes, threshold,
+        save_path=os.path.join(figures_dir, "score_by_regime.png"),
+    )
+    if dataset.upper() == "CMAPSS":
+        unit_ids = test_loader.dataset.unit.numpy()
+        rep_unit = _pick_representative_unit(unit_ids, labels)
+        mask = unit_ids == rep_unit
+        plot_score_timeline(
+            metrics["scores"][mask], labels[mask], metrics["pred"][mask], threshold, regimes[mask],
+            save_path=os.path.join(figures_dir, "score_timeline.png"),
+            title=f"Anomaly Score Timeline (unit {rep_unit})",
         )
 
     return test_loss, metrics
