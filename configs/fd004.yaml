@@ -1,42 +1,36 @@
 model:
-  channels: [64, 64, 128, 128]
-  kernel_size: 5
-  dropout: 0.15
-
+  channels:
+  - 64
+  - 64
+  - 128
+  kernel_size: 3
+  dropout: 0.1192339087882188
 training:
   epochs: 50
-  batch_size: 64
-  lr: 0.001
-  window_size: 64
+  batch_size: 32
+  lr: 0.0038924698747005333
+  window_size: 128
   stride: 1
   patience: 5
   min_delta: 0.0005
   healthy_only: true
   min_normal_windows: 1
-
-  forecast_loss_weight: 1.0
-  reconstruction_loss_weight: 0.3
-  regime_loss_weight: 0.1
-
+  forecast_loss_weight: 0.27320252338833023
+  reconstruction_loss_weight: 0.14569715144230608
+  regime_loss_weight: 0.634470344535421
 regime:
-  # FD004 has SIX known operating conditions and TWO fault modes -- the hardest
-  # subset, and the strongest test of regime-awareness generalizing.
-  n_regimes: 6
+  n_regimes: 4
   feature_idx: null
-
-  cmapss_normal_rul: 100
-  cmapss_anomaly_rul: 30
-
-  latent_alpha: 1.0
-  reconstruction_beta: 0.5
-  threshold_percentile: 90.0
-
+  cmapss_normal_rul: 130
+  cmapss_anomaly_rul: 20
+  latent_alpha: 0.2510787450521747
+  reconstruction_beta: 0.1305021069104988
+  threshold_percentile: 93.21433722034685
 data:
-  path: "./UCI CBM Dataset/data.txt"
+  path: ./UCI CBM Dataset/data.txt
   split_train: 0.7
   split_val: 0.15
   split_test: 0.15
-
-  cmapss_fd: "FD004"
-  cmapss_data_dir: "./CMAPSSData"
+  cmapss_fd: FD003
+  cmapss_data_dir: ./CMAPSSData
   val_split: 0.2

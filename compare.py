@@ -56,7 +56,7 @@ def run(dataset, config_path, threshold_percentile, fd=None):
 
     resolved_fd = fd
     if dataset.upper() == "CMAPSS" and resolved_fd is None:
-        resolved_fd = config.get("data", {}).get("cmapss_fd", "FD003")
+        resolved_fd = config.get("data", {}).get("cmapss_fd", "FD002")
 
     print(f"\n===== Training regime-aware TCN ({dataset}) =====")
     model, test_loader, criterion, device, calibration = train_tcn(config_path, dataset, fd=fd)
@@ -125,7 +125,7 @@ def run(dataset, config_path, threshold_percentile, fd=None):
     figures_dir = figures_dir_for(dataset, resolved_fd)
     display_results = {DISPLAY_NAMES.get(k, k): v for k, v in results.items()}
     display_pointwise = {DISPLAY_NAMES.get(k, k): v for k, v in pointwise_by_method.items()}
-    plot_roc_comparison(display_results, save_path=os.path.join(figures_dir, "roc_comparison.png"))
+    plot_roc_comparison(display_results, save_path = os.path.join(figures_dir, "roc_comparison.png"))
     plot_method_comparison_bars(display_pointwise, save_path=os.path.join(figures_dir, "method_comparison.png"))
     print(f"\nComparison figures saved to: {figures_dir}")
 
@@ -134,13 +134,13 @@ def run(dataset, config_path, threshold_percentile, fd=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default="CMAPSS", choices=["CBM", "CMAPSS"])
+    parser.add_argument("--dataset", type=str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
         "--fd", type=str, default=None, choices=["FD001", "FD002", "FD003", "FD004"],
         help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd).",
     )
-    parser.add_argument("--config", type=str, default="./config.yaml")
-    parser.add_argument("--threshold_percentile", type=float, default=90.0)
+    parser.add_argument("--config", type = str, default = "./config.yaml")
+    parser.add_argument("--threshold_percentile", type = float, default = 90.0)
     args = parser.parse_args()
 
     run(args.dataset, args.config, args.threshold_percentile, fd = args.fd)

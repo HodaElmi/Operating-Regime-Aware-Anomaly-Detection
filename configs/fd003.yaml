@@ -1,43 +1,36 @@
 model:
-  channels: [64, 64, 128, 128]
+  channels:
+  - 64
+  - 64
+  - 128
   kernel_size: 5
-  dropout: 0.15
-
+  dropout: 0.3119439868339901
 training:
   epochs: 50
-  batch_size: 64
-  lr: 0.001
-  window_size: 64
+  batch_size: 32
+  lr: 0.0018934712873198826
+  window_size: 96
   stride: 1
-  patience: 5
+  patience: 4
   min_delta: 0.0005
   healthy_only: true
   min_normal_windows: 1
-
-  forecast_loss_weight: 1.0
-  reconstruction_loss_weight: 0.3
-  regime_loss_weight: 0.1
-
+  forecast_loss_weight: 0.18327807488885545
+  reconstruction_loss_weight: 0.5802690356045037
+  regime_loss_weight: 0.27612597005394995
 regime:
-  # FD003 has ONE operating condition (sea level), like FD001, but TWO fault
-  # modes (HPC + fan degradation) -- regimes capture sub-clusters/transients,
-  # not distinct flight conditions.
-  n_regimes: 3
+  n_regimes: 2
   feature_idx: null
-
-  cmapss_normal_rul: 100
+  cmapss_normal_rul: 130
   cmapss_anomaly_rul: 30
-
-  latent_alpha: 1.0
-  reconstruction_beta: 0.5
-  threshold_percentile: 90.0
-
+  latent_alpha: 0.22220908011289497
+  reconstruction_beta: 0.3003459807642197
+  threshold_percentile: 98.88739051508547
 data:
-  path: "./UCI CBM Dataset/data.txt"
+  path: ./UCI CBM Dataset/data.txt
   split_train: 0.7
   split_val: 0.15
   split_test: 0.15
-
-  cmapss_fd: "FD003"
-  cmapss_data_dir: "./CMAPSSData"
+  cmapss_fd: FD003
+  cmapss_data_dir: ./CMAPSSData
   val_split: 0.2

@@ -110,9 +110,9 @@ def build_trial_config(base_config, trial, dataset):
     cfg["training"]["window_size"] = trial.suggest_categorical("window_size", [32, 48, 64, 96, 128])
     cfg["training"]["patience"] = trial.suggest_int("patience", 4, 8)
 
-    cfg["training"]["forecast_loss_weight"] = 1.0
+    cfg["training"]["forecast_loss_weight"] = trial.suggest_float("forecast_loss_weight", 0.0, 0.8)
     cfg["training"]["reconstruction_loss_weight"] = trial.suggest_float("reconstruction_loss_weight", 0.0, 0.8)
-    cfg["training"]["regime_loss_weight"] = trial.suggest_float("regime_loss_weight", 0.0, 0.5)
+    cfg["training"]["regime_loss_weight"] = trial.suggest_float("regime_loss_weight", 0.0, 0.95)
 
     cfg["regime"]["n_regimes"] = trial.suggest_categorical("n_regimes", [2, 3, 4, 5])
     cfg["regime"]["latent_alpha"] = trial.suggest_float("latent_alpha", 0.0, 2.0)
@@ -168,7 +168,6 @@ def run_trial(cfg, dataset, trial_dir, fd=None):
 
 
 def copy_current_best(study, run_dir, trials_dir):
-    """Keep a live copy of the best checkpoint/config in the run directory."""
     if study.best_trial is None:
         return
 
@@ -207,22 +206,22 @@ def write_study_summary(study, args, run_dir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default="CMAPSS", choices=["CBM", "CMAPSS"])
+    parser.add_argument("--dataset", type = str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
-        "--fd", type=str, default=None, choices=["FD001", "FD002", "FD003", "FD004"],
+        "--fd", type = str, default = None, choices = ["FD001", "FD002", "FD003", "FD004"],
         help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd). Fixed for the whole study, not searched.",
     )
-    parser.add_argument("--config", type=str, default="./config.yaml")
-    parser.add_argument("--n_trials", type=int, default=50)
+    parser.add_argument("--config", type = str, default = "./config.yaml")
+    parser.add_argument("--n_trials", type = int, default = 50)
     parser.add_argument(
         "--study_name",
-        type=str,
-        default=None,
-        help="Persistent Optuna study name. If omitted, one stable study is used per dataset.",
+        type = str,
+        default = None,
+        help = "Persistent Optuna study name. If omitted, one stable study is used per dataset.",
     )
-    parser.add_argument("--out_dir", type=str, default="./optuna_runs")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--objective", type=str, default="test_f1", choices=["val_f1", "test_f1"])
+    parser.add_argument("--out_dir", type = str, default = "./optuna_runs")
+    parser.add_argument("--seed", type = int, default = 42)
+    parser.add_argument("--objective", type = str, default = "test_f1", choices = ["val_f1", "test_f1"])
     parser.add_argument(
         "--storage",
         type=str,
@@ -291,7 +290,6 @@ def main():
         return float(summary[args.objective])
 
     def after_trial_callback(study, trial):
-        """Update live artifacts after every finished trial."""
         write_trials_csv(study, os.path.join(run_dir, "trials.csv"))
         save_optuna_plots(study, plots_dir)
         write_study_summary(study, args, run_dir)

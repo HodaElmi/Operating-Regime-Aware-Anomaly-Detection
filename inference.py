@@ -30,14 +30,14 @@ def run_inference(dataset, checkpoint_path, config, fd=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True, choices=["CBM", "CMAPSS"])
+    parser.add_argument("--dataset", type = str, required = True, choices = ["CBM", "CMAPSS"])
     parser.add_argument(
-        "--fd", type=str, default=None, choices=["FD001", "FD002", "FD003", "FD004"],
+        "--fd", type=str, default = None, choices = ["FD001", "FD002", "FD003", "FD004"],
         help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd).",
     )
-    parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--config", type=str, default="./config.yaml")
+    parser.add_argument("--checkpoint", type = str, required = True)
+    parser.add_argument("--config", type = str, default = "./configs/base.yaml")
     args = parser.parse_args()
 
     config = load_config(args.config)
-    run_inference(args.dataset, args.checkpoint, config, fd=args.fd)
+    run_inference(args.dataset, args.checkpoint, config, fd = args.fd)

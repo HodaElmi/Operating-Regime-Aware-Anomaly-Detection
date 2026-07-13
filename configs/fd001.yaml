@@ -1,43 +1,36 @@
 model:
-  channels: [64, 64, 128, 128]
-  kernel_size: 5
-  dropout: 0.15
-
+  channels:
+  - 64
+  - 64
+  - 128
+  kernel_size: 3
+  dropout: 0.3112719917913085
 training:
   epochs: 50
-  batch_size: 64
-  lr: 0.001
-  window_size: 64
+  batch_size: 32
+  lr: 0.0012697166345350434
+  window_size: 128
   stride: 1
   patience: 5
   min_delta: 0.0005
   healthy_only: true
   min_normal_windows: 1
-
-  forecast_loss_weight: 1.0
-  reconstruction_loss_weight: 0.3
-  regime_loss_weight: 0.1
-
+  forecast_loss_weight: 0.7136372441416907
+  reconstruction_loss_weight: 0.5049109007978103
+  regime_loss_weight: 0.755070738364566
 regime:
-  # FD001 has ONE operating condition (sea level) -- regimes here capture
-  # sub-clusters/transients within that single condition, not distinct flight
-  # conditions.
   n_regimes: 3
   feature_idx: null
-
-  cmapss_normal_rul: 100
-  cmapss_anomaly_rul: 30
-
-  latent_alpha: 1.0
-  reconstruction_beta: 0.5
-  threshold_percentile: 90.0
-
+  cmapss_normal_rul: 130
+  cmapss_anomaly_rul: 20
+  latent_alpha: 1.4449042305230106
+  reconstruction_beta: 0.5615447248817116
+  threshold_percentile: 85.34042353004035
 data:
-  path: "./UCI CBM Dataset/data.txt"
+  path: ./UCI CBM Dataset/data.txt
   split_train: 0.7
   split_val: 0.15
   split_test: 0.15
-
-  cmapss_fd: "FD001"
-  cmapss_data_dir: "./CMAPSSData"
+  cmapss_fd: FD003
+  cmapss_data_dir: ./CMAPSSData
   val_split: 0.2

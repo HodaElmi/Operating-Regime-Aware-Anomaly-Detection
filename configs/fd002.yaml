@@ -1,42 +1,36 @@
 model:
-  channels: [64, 64, 128, 128]
-  kernel_size: 5
-  dropout: 0.15
-
+  channels:
+  - 64
+  - 64
+  - 128
+  kernel_size: 3
+  dropout: 0.28999153255837007
 training:
   epochs: 50
-  batch_size: 64
-  lr: 0.001
-  window_size: 64
+  batch_size: 32
+  lr: 0.0009855824735667564
+  window_size: 128
   stride: 1
   patience: 5
   min_delta: 0.0005
   healthy_only: true
   min_normal_windows: 1
-
-  forecast_loss_weight: 1.0
-  reconstruction_loss_weight: 0.3
-  regime_loss_weight: 0.1
-
+  forecast_loss_weight: 0.23850314906257233
+  reconstruction_loss_weight: 0.762585256668723
+  regime_loss_weight: 0.9174098466698746
 regime:
-  # FD002 has SIX known operating conditions -- n_regimes matches that count
-  # since regime clustering runs on the 3 operational-setting columns.
-  n_regimes: 6
+  n_regimes: 2
   feature_idx: null
-
-  cmapss_normal_rul: 100
-  cmapss_anomaly_rul: 30
-
-  latent_alpha: 1.0
-  reconstruction_beta: 0.5
-  threshold_percentile: 90.0
-
+  cmapss_normal_rul: 130
+  cmapss_anomaly_rul: 20
+  latent_alpha: 0.45427802330175737
+  reconstruction_beta: 0.8886855475120149
+  threshold_percentile: 85.02344992234217
 data:
-  path: "./UCI CBM Dataset/data.txt"
+  path: ./UCI CBM Dataset/data.txt
   split_train: 0.7
   split_val: 0.15
   split_test: 0.15
-
-  cmapss_fd: "FD002"
-  cmapss_data_dir: "./CMAPSSData"
+  cmapss_fd: FD003
+  cmapss_data_dir: ./CMAPSSData
   val_split: 0.2

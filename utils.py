@@ -8,7 +8,7 @@ from sklearn.metrics import roc_curve, auc, confusion_matrix
 
 import torch
 
-PALETTE = ["#1a5276", "#a93226", "#1e8449", "#b9770e", "#6c3483", "#566573"]
+PALETTE = ["#E6B0AA", "#A9CCE3", "#17A589", "#C39BD3", "#6c3483", "#F0B27A"]
 
 
 def _configure_paper_style():

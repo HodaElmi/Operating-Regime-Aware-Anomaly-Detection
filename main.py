@@ -10,7 +10,7 @@ def main():
         "--fd", type = str, default = None, choices = ["FD001", "FD002", "FD003", "FD004"],
         help = "C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd).",
     )
-    parser.add_argument("--config", type = str, default = "./config.yaml")
+    parser.add_argument("--config", type = str, default = "./configs/base.yaml")
     args = parser.parse_args()
 
     model, test_loader, criterion, device, calibration = train_tcn(args.config, args.dataset, fd=args.fd)
