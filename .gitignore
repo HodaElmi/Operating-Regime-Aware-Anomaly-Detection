@@ -1,5 +1,4 @@
 __pycache__/
-/experiments_cmapss
 /figures
 /model
 /papers
@@ -7,3 +6,4 @@ CLAUDE.md
 /Claude
 /docs
 /optuna_runs
+/paper_figures.py

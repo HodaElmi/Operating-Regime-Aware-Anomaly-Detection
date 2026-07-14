@@ -1,9 +1,10 @@
 import argparse
 from train import train_tcn, test_model
-from utils import load_config
+from utils import load_config, seed_everything
 
 
 def main():
+    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default = "CBM", choices = ["CBM", "CMAPSS"])
     parser.add_argument(

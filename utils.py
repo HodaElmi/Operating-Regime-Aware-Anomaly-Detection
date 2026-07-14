@@ -2,11 +2,22 @@ import os
 
 import numpy as np
 import yaml
+import random
 import matplotlib.pyplot as plt
 from cycler import cycler
 from sklearn.metrics import roc_curve, auc, confusion_matrix
 
 import torch
+
+def seed_everything(seed = 42):
+
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 PALETTE = ["#E6B0AA", "#A9CCE3", "#17A589", "#C39BD3", "#6c3483", "#F0B27A"]
 
@@ -172,6 +183,79 @@ def plot_score_distribution_by_regime(scores, labels, regimes, threshold, save_p
     ax.legend()
     ax.grid(axis="y")
     fig.tight_layout()
+    fig.savefig(save_path)
+    plt.close(fig)
+
+
+def plot_sensor_distributions_by_regime(
+    X, regimes, feature_indices, feature_names, save_path, regime_axis=None,
+    regime_axis_label="Operating regime (ordered)", title="Healthy Sensor Behavior Across Operating Regimes",
+    ncols=2, rng_seed=0,
+):
+    """Small-multiples violin+strip plot: one panel per sensor, one violin per regime,
+    ordered along the x-axis by a physically meaningful variable rather than by raw
+    (arbitrary) K-means cluster id, with a trend line through the regime medians.
+
+    X: (n_samples, n_features) array in physical units (already inverse-scaled).
+    regimes: (n_samples,) regime id per row, restricted to the population you want to
+        characterize (typically healthy samples only).
+    regime_axis: (n_samples,) optional physical variable (e.g. ship speed, an operating
+        setting) used both to order regimes left-to-right and to label the x-ticks with
+        their physical value. Falls back to raw regime id if not provided.
+    """
+    X = np.asarray(X)
+    regimes = np.asarray(regimes)
+    regime_ids = np.unique(regimes).tolist()
+
+    if regime_axis is not None:
+        regime_axis = np.asarray(regime_axis)
+        axis_value = {r: regime_axis[regimes == r].mean() for r in regime_ids}
+        regime_ids = sorted(regime_ids, key=lambda r: axis_value[r])
+        tick_labels = [f"{axis_value[r]:.3g}" for r in regime_ids]
+    else:
+        regime_ids = sorted(regime_ids)
+        tick_labels = [f"R{r}" for r in regime_ids]
+
+    counts = [int((regimes == r).sum()) for r in regime_ids]
+    positions = list(range(len(regime_ids)))
+    rng = np.random.RandomState(rng_seed)
+
+    n_feats = len(feature_indices)
+    ncols = min(ncols, n_feats)
+    nrows = int(np.ceil(n_feats / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.6 * ncols, 3.4 * nrows), squeeze=False)
+
+    for ax_idx, (feat_idx, feat_name) in enumerate(zip(feature_indices, feature_names)):
+        ax = axes[ax_idx // ncols][ax_idx % ncols]
+        data = [X[regimes == r, feat_idx] for r in regime_ids]
+        medians = [np.median(d) for d in data]
+
+        vp = ax.violinplot(data, positions=positions, widths=0.7, showmedians=False, showextrema=False)
+        for i, body in enumerate(vp["bodies"]):
+            body.set_facecolor(PALETTE[i % len(PALETTE)])
+            body.set_alpha(0.55)
+            body.set_edgecolor("none")
+
+        for i, d in enumerate(data):
+            jitter = rng.uniform(-0.12, 0.12, size=len(d))
+            ax.scatter(positions[i] + jitter, d, s=5, color="black", alpha=0.25, linewidths=0, zorder=2)
+
+        ax.plot(positions, medians, color="black", lw=1.2, marker="o", markersize=3.5, zorder=3)
+
+        ax.set_xticks(positions)
+        ax.set_xticklabels(tick_labels, rotation=0 if len(regime_ids) <= 6 else 45, ha="center" if len(regime_ids) <= 6 else "right")
+        for i, n in enumerate(counts):
+            ax.text(positions[i], ax.get_ylim()[0], f"n={n}", ha="center", va="top", fontsize=6.5, alpha=0.7)
+        ax.set_ylabel(feat_name)
+        ax.set_xlabel(regime_axis_label)
+        ax.grid(axis="y")
+
+    for j in range(n_feats, nrows * ncols):
+        axes[j // ncols][j % ncols].axis("off")
+
+    fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(save_path)
     plt.close(fig)
 

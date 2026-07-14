@@ -19,8 +19,8 @@ training:
   regime_loss_weight: 0.1
 
 regime:
-  n_regimes: 3
-  feature_idx: null             
+  n_regimes: 9
+  feature_idx: [0, 1]
   cmapss_normal_rul: 100
   cmapss_anomaly_rul: 30
 

@@ -1,31 +1,33 @@
 model:
   channels:
-  - 32
-  - 32
   - 64
-  kernel_size: 5
-  dropout: 0.388168908903183
+  - 64
+  - 128
+  kernel_size: 3
+  dropout: 0.2581436347175901
 training:
   epochs: 50
   batch_size: 32
-  lr: 0.0008293951331453906
+  lr: 0.0020167186094589514
   window_size: 48
   stride: 1
-  patience: 8
+  patience: 5
   min_delta: 0.0005
   healthy_only: true
   min_normal_windows: 1
-  forecast_loss_weight: 0.517669830986925
-  reconstruction_loss_weight: 0.5188925588685651
-  regime_loss_weight: 0.7680725144556093
+  forecast_loss_weight: 0.7574439411308509
+  reconstruction_loss_weight: 0.5046279990029392
+  regime_loss_weight: 0.6906165141986422
 regime:
-  n_regimes: 5
-  feature_idx: null
+  n_regimes: 9
+  feature_idx:
+  - 0
+  - 1
   cmapss_normal_rul: 100
   cmapss_anomaly_rul: 30
-  latent_alpha: 0.31715401707976826
-  reconstruction_beta: 1.9668228330445696
-  threshold_percentile: 92.55406353051306
+  latent_alpha: 1.240297815569115
+  reconstruction_beta: 1.1992816888392483
+  threshold_percentile: 95.31544658223537
 data:
   path: ./UCI CBM Dataset/data.txt
   split_train: 0.7

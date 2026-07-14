@@ -17,7 +17,7 @@ from optuna.visualization.matplotlib import (
 )
 
 from train import run_training, collect_outputs, evaluate_anomaly
-from utils import load_config
+from utils import load_config, seed_everything
 
 
 CHANNEL_PRESETS = {
@@ -26,6 +26,19 @@ CHANNEL_PRESETS = {
     "deep": [64, 64, 128, 128],
     "wide": [64, 128, 128, 256],
 }
+
+# Regime count is fixed by each dataset's physical operating-condition structure
+# (empirically confirmed via K-means silhouette/inertia), not searched by Optuna:
+#   - CBM: 9 discrete ship-speed levels (3-27 knots in 3-knot steps), clustered on
+#     [lp, v] only (excluding GTT, which is a decay-affected response, not an
+#     operating-condition input).
+#   - C-MAPSS FD001/FD003: 1 operating condition (op_setting1/2 are pure simulation
+#     noise around a single nominal point, op_setting3 is constant).
+#   - C-MAPSS FD002/FD004: 6 operating conditions (near-perfect K-means separation
+#     at k=6: inertia ~= 0, silhouette ~= 1.0).
+CBM_N_REGIMES = 9
+CBM_REGIME_FEATURE_IDX = [0, 1]
+CMAPSS_N_REGIMES = {"FD001": 1, "FD002": 6, "FD003": 1, "FD004": 6}
 
 
 def save_yaml(obj, path):
@@ -97,7 +110,7 @@ def write_trials_csv(study, path):
         writer.writerows(rows)
 
 
-def build_trial_config(base_config, trial, dataset):
+def build_trial_config(base_config, trial, dataset, fd=None):
     cfg = copy.deepcopy(base_config)
 
     channel_key = trial.suggest_categorical("channels", list(CHANNEL_PRESETS.keys()))
@@ -114,12 +127,16 @@ def build_trial_config(base_config, trial, dataset):
     cfg["training"]["reconstruction_loss_weight"] = trial.suggest_float("reconstruction_loss_weight", 0.0, 0.8)
     cfg["training"]["regime_loss_weight"] = trial.suggest_float("regime_loss_weight", 0.0, 0.95)
 
-    cfg["regime"]["n_regimes"] = trial.suggest_categorical("n_regimes", [2, 3, 4, 5])
     cfg["regime"]["latent_alpha"] = trial.suggest_float("latent_alpha", 0.0, 2.0)
     cfg["regime"]["reconstruction_beta"] = trial.suggest_float("reconstruction_beta", 0.0, 2.0)
     cfg["regime"]["threshold_percentile"] = trial.suggest_float("threshold_percentile", 85.0, 99.0)
 
-    if dataset.upper() == "CMAPSS":
+    if dataset.upper() == "CBM":
+        cfg["regime"]["n_regimes"] = CBM_N_REGIMES
+        cfg["regime"]["feature_idx"] = CBM_REGIME_FEATURE_IDX
+    else:
+        resolved_fd = (fd or cfg["data"].get("cmapss_fd", "FD003")).upper()
+        cfg["regime"]["n_regimes"] = CMAPSS_N_REGIMES[resolved_fd]
         cfg["regime"]["cmapss_normal_rul"] = trial.suggest_categorical("cmapss_normal_rul", [80, 100, 120, 130])
         cfg["regime"]["cmapss_anomaly_rul"] = trial.suggest_categorical("cmapss_anomaly_rul", [20, 30, 40])
 
@@ -134,10 +151,10 @@ def run_trial(cfg, dataset, trial_dir, fd=None):
     model, criterion, device = result["model"], result["criterion"], result["device"]
     calibration = result["calibration"]
 
-    _, val_res, val_rec, val_feat, val_labels, val_regimes = collect_outputs(model, result["val_loader"], criterion, device)
+    _, val_res, val_rec, val_feat, val_labels, val_regimes, _ = collect_outputs(model, result["val_loader"], criterion, device)
     val_metrics = evaluate_anomaly(val_res, val_rec, val_feat, val_labels, val_regimes, calibration)
 
-    _, test_res, test_rec, test_feat, test_labels, test_regimes = collect_outputs(model, result["test_loader"], criterion, device)
+    _, test_res, test_rec, test_feat, test_labels, test_regimes, _ = collect_outputs(model, result["test_loader"], criterion, device)
     test_metrics = evaluate_anomaly(test_res, test_rec, test_feat, test_labels, test_regimes, calibration)
 
     excluded = {"scores", "pred", "labels", "regimes", "residual_z", "latent_z", "recon_z"}
@@ -205,13 +222,14 @@ def write_study_summary(study, args, run_dir):
 
 
 def main():
+    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type = str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
         "--fd", type = str, default = None, choices = ["FD001", "FD002", "FD003", "FD004"],
         help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd). Fixed for the whole study, not searched.",
     )
-    parser.add_argument("--config", type = str, default = "./config.yaml")
+    parser.add_argument("--config", type = str, default = "./configs/base.yaml")
     parser.add_argument("--n_trials", type = int, default = 50)
     parser.add_argument(
         "--study_name",
@@ -273,7 +291,7 @@ def main():
 
     def objective(trial):
         trial_dir = os.path.join(trials_dir, f"trial_{trial.number:03d}")
-        cfg = build_trial_config(base_config, trial, args.dataset)
+        cfg = build_trial_config(base_config, trial, args.dataset, fd=args.fd)
         try:
             summary = run_trial(cfg, args.dataset, trial_dir, fd=args.fd)
         except Exception as exc:

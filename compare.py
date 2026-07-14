@@ -4,7 +4,7 @@ import os
 import torch
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, roc_auc_score
 
-from utils import load_config, figures_dir_for, plot_roc_comparison, plot_method_comparison_bars
+from utils import load_config, figures_dir_for, plot_roc_comparison, plot_method_comparison_bars, seed_everything
 from train import _build_loaders, train_tcn, collect_outputs, evaluate_anomaly, tune_threshold
 from baselines import (
     train_global_forecaster,
@@ -60,7 +60,7 @@ def run(dataset, config_path, threshold_percentile, fd=None):
 
     print(f"\n===== Training regime-aware TCN ({dataset}) =====")
     model, test_loader, criterion, device, calibration = train_tcn(config_path, dataset, fd=fd)
-    _, residuals, recon_errors, features, labels, regimes = collect_outputs(model, test_loader, criterion, device)
+    _, residuals, recon_errors, features, labels, regimes, _ = collect_outputs(model, test_loader, criterion, device)
     metrics = evaluate_anomaly(residuals, recon_errors, features, labels, regimes, calibration)
     results["regime_aware_tcn"] = {"labels": labels, "preds": metrics["pred"], "scores": metrics["scores"]}
 
@@ -133,6 +133,7 @@ def run(dataset, config_path, threshold_percentile, fd=None):
 
 
 if __name__ == "__main__":
+    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(

@@ -92,6 +92,7 @@ def collect_outputs(model, loader, criterion, device):
     total_loss = 0.0
     total_count = 0
     all_residuals, all_recon_errors, all_features, all_labels, all_regimes = [], [], [], [], []
+    all_regime_logits = []
 
     with torch.no_grad():
         for X, target, label, regime in loader:
@@ -117,6 +118,7 @@ def collect_outputs(model, loader, criterion, device):
             all_features.append(features.cpu().numpy())
             all_labels.append(label.numpy())
             all_regimes.append(regime.cpu().numpy())
+            all_regime_logits.append(outputs["regime_logits"].cpu().numpy())
 
     return (
         total_loss / max(total_count, 1),
@@ -125,6 +127,7 @@ def collect_outputs(model, loader, criterion, device):
         np.concatenate(all_features),
         np.concatenate(all_labels),
         np.concatenate(all_regimes),
+        np.concatenate(all_regime_logits),
     )
 
 
@@ -484,6 +487,7 @@ def run_training(cfg, dataset, fd = None, device = None, verbose = True):
     )
 
     train_losses, val_losses = [], []
+    film_gamma_history, film_beta_history, val_regime_acc_history = [], [], []
     best_val_loss = float("inf")
     best_checkpoint = None
 
@@ -495,7 +499,7 @@ def run_training(cfg, dataset, fd = None, device = None, verbose = True):
             model, train_loader, criterion, optimizer, device, train_cfg,
             healthy_only=use_healthy_only,
         )
-        _, val_residuals_epoch, _, _, val_labels_epoch, _ = collect_outputs(model, val_loader, criterion, device)
+        _, val_residuals_epoch, _, _, val_labels_epoch, val_regimes_epoch, val_regime_logits_epoch = collect_outputs(model, val_loader, criterion, device)
         val_residual_mse = np.mean(val_residuals_epoch ** 2, axis=1)
         normal_val_scores = val_residual_mse[val_labels_epoch == 0]
         val_loss = float(normal_val_scores.mean()) if len(normal_val_scores) else float(val_residual_mse.mean())
@@ -503,8 +507,12 @@ def run_training(cfg, dataset, fd = None, device = None, verbose = True):
         train_losses.append(train_loss)
         val_losses.append(val_loss)
 
+        film_gamma_history.append(model.regime_film.gamma.weight.detach().cpu().numpy().copy())
+        film_beta_history.append(model.regime_film.beta.weight.detach().cpu().numpy().copy())
+        val_regime_acc_history.append(float((val_regime_logits_epoch.argmax(axis=1) == val_regimes_epoch).mean()))
+
         if verbose:
-            print(f"Train Loss: {train_loss:.6f} | Val Forecast MSE: {val_loss:.6f}")
+            print(f"Train Loss: {train_loss:.6f} | Val Forecast MSE: {val_loss:.6f} | Val Regime Acc: {val_regime_acc_history[-1]:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -514,6 +522,9 @@ def run_training(cfg, dataset, fd = None, device = None, verbose = True):
                 "optimizer_state": optimizer.state_dict(),
                 "train_losses": train_losses,
                 "val_losses": val_losses,
+                "film_gamma_history": film_gamma_history,
+                "film_beta_history": film_beta_history,
+                "val_regime_acc_history": val_regime_acc_history,
                 "dataset": dataset.upper(),
                 "input_dim": input_dim,
                 "meta": meta,
@@ -528,10 +539,10 @@ def run_training(cfg, dataset, fd = None, device = None, verbose = True):
 
     model.load_state_dict(best_checkpoint["model_state"])
 
-    _, calib_residuals, calib_recon_errors, calib_features, calib_labels, calib_regimes = collect_outputs(
+    _, calib_residuals, calib_recon_errors, calib_features, calib_labels, calib_regimes, _ = collect_outputs(
         model, train_loader, criterion, device
     )
-    _, val_residuals, val_recon_errors, val_features, val_labels, val_regimes = collect_outputs(
+    _, val_residuals, val_recon_errors, val_features, val_labels, val_regimes, _ = collect_outputs(
         model, val_loader, criterion, device
     )
     calibration = fit_hybrid_calibration(
@@ -580,7 +591,8 @@ def train_tcn(config_path = "./config.yaml", dataset = "CBM", fd = None):
     result = run_training(config, dataset, fd = fd, verbose = True)
 
     os.makedirs("./model", exist_ok = True)
-    checkpoint_path = f"./model/best_{dataset.lower()}_regime_tcn.ckpt"
+    tag = dataset_tag(dataset, result["fd"]).lower()
+    checkpoint_path = f"./model/best_{tag}_regime_tcn.ckpt"
     torch.save(result["checkpoint"], checkpoint_path)
     print(f"\nBest regime-aware model saved to: {checkpoint_path}")
 
@@ -610,8 +622,9 @@ def _pick_representative_unit(unit_ids, labels):
 def test_model(model, test_loader, criterion, device, calibration, dataset = "CBM", fd = None):
     print("\nRunning regime-aware anomaly detection evaluation.")
 
-    test_loss, residuals, recon_errors, features, labels, regimes = collect_outputs(model, test_loader, criterion, device)
+    test_loss, residuals, recon_errors, features, labels, regimes, regime_logits = collect_outputs(model, test_loader, criterion, device)
     metrics = evaluate_anomaly(residuals, recon_errors, features, labels, regimes, calibration)
+    test_regime_acc = float((regime_logits.argmax(axis=1) == regimes).mean())
 
     print("\nTEST RESULTS")
     print(f"Test MSE:    {test_loss:.6f}")
@@ -620,6 +633,7 @@ def test_model(model, test_loader, criterion, device, calibration, dataset = "CB
     print(f"Recall:      {metrics['recall']:.4f}")
     print(f"F1 Score:    {metrics['f1']:.4f}")
     print(f"ROC-AUC:     {metrics['roc']:.4f}")
+    print(f"Auxiliary regime-classification accuracy: {test_regime_acc:.4f}")
     print(f"Predicted anomaly rate: {metrics['pred'].mean():.4f}")
     if (labels == 0).any():
         print(f"Mean hybrid score normal:  {metrics['scores'][labels == 0].mean():.4f}")

@@ -19,7 +19,7 @@ training:
   reconstruction_loss_weight: 0.14569715144230608
   regime_loss_weight: 0.634470344535421
 regime:
-  n_regimes: 4
+  n_regimes: 6
   feature_idx: null
   cmapss_normal_rul: 130
   cmapss_anomaly_rul: 20
