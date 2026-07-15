@@ -362,6 +362,68 @@ def apply_hybrid_calibration(residuals, recon_errors, features, regimes, calibra
     pred = (hybrid_z > calibration["global_threshold"]).astype(int)
     return hybrid_z, pred, residual_z, latent_z, recon_z
 
+
+def fit_reconstruction_calibration(
+    recon_errors,
+    features,
+    labels,
+    regimes,
+    n_regimes = 3,
+    latent_alpha = 1.0,
+    threshold_percentile = 90.0,
+    val_recon_errors = None,
+    val_features = None,
+    val_labels = None,
+    val_regimes = None,
+):
+    """Sibling to fit_hybrid_calibration for architectures with no forecast head
+    (e.g. RegimeAwareAutoencoder): combines latent_alpha*latent_z + recon_z, with
+    no residual term since there is no forecast residual to compute one from.
+    """
+    latent_cov = _fit_covariance_models(features, labels, regimes, n_regimes=n_regimes)
+    latent_dist = _mahalanobis_distance(features, regimes, latent_cov)
+
+    recon_norm = fit_regime_normalizers(recon_errors, labels, regimes, n_regimes=n_regimes)
+    latent_norm = fit_regime_normalizers(latent_dist, labels, regimes, n_regimes=n_regimes)
+
+    def score(rec, feat, reg):
+        ld = _mahalanobis_distance(feat, reg, latent_cov)
+        cz = apply_regime_normalizers(rec, reg, recon_norm)
+        lz = apply_regime_normalizers(ld, reg, latent_norm)
+        return cz + latent_alpha * lz
+
+    train_scores = score(recon_errors, features, regimes)
+    val_scores = None
+    if val_recon_errors is not None and val_labels is not None:
+        val_scores = score(val_recon_errors, val_features, val_regimes)
+
+    threshold, threshold_source, val_best_f1 = tune_threshold(
+        train_scores, labels, val_scores, val_labels, percentile=threshold_percentile
+    )
+
+    return {
+        "latent_cov": latent_cov,
+        "recon_norm": recon_norm,
+        "latent_norm": latent_norm,
+        "latent_alpha": float(latent_alpha),
+        "global_threshold": threshold,
+        "threshold_percentile": float(threshold_percentile),
+        "threshold_source": threshold_source,
+        "val_best_f1": val_best_f1,
+        "n_calib_normal": int((labels == 0).sum()),
+        "distance_type": "regime_mahalanobis_no_forecast",
+    }
+
+
+def apply_reconstruction_calibration(recon_errors, features, regimes, calibration):
+    latent_dist = _mahalanobis_distance(features, regimes, calibration["latent_cov"])
+    recon_z = apply_regime_normalizers(recon_errors, regimes, calibration["recon_norm"])
+    latent_z = apply_regime_normalizers(latent_dist, regimes, calibration["latent_norm"])
+    score = recon_z + calibration.get("latent_alpha", 1.0) * latent_z
+    pred = (score > calibration["global_threshold"]).astype(int)
+    return score, pred, latent_z, recon_z
+
+
 def count_labels(loader):
     labels = loader.dataset.label.numpy()
     unique, counts = np.unique(labels, return_counts=True)

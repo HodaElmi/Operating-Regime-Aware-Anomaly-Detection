@@ -7,3 +7,4 @@ CLAUDE.md
 /docs
 /optuna_runs
 /paper_figures.py
+/ablations.py

@@ -123,6 +123,41 @@ class RegimeAwareTCN(nn.Module):
 TCN = RegimeAwareTCN
 
 
+class RegimeAwareAutoencoder(nn.Module):
+    """Ablation: same FiLM conditioning + auxiliary regime head as RegimeAwareTCN,
+    but reconstruction-only (no forecast_head) — isolates whether regime-awareness
+    itself helps a reconstruction-based method, independent of the forecast-across-
+    regimes failure mode RegimeAwareTCN is designed to fix.
+    """
+
+    def __init__(self, input_dim, channels, kernel_size=3, dropout=0.2, n_regimes=3):
+        super().__init__()
+        self.encoder = _tcn_encoder(input_dim, channels, kernel_size, dropout)
+        hidden_dim = channels[-1]
+
+        self.pool = AttentionPooling(hidden_dim)
+        self.regime_film = RegimeFiLM(n_regimes, hidden_dim)
+        self.recon_head = nn.Conv1d(hidden_dim, input_dim, kernel_size=1)
+        self.regime_head = nn.Linear(hidden_dim, n_regimes)
+
+    def forward(self, x, regime):
+        y = self.encoder(x.transpose(1, 2))        # [B, C, L]
+        features, attn = self.pool(y)               # [B, C], [B, L]
+        regime_logits = self.regime_head(features)
+
+        y_cond = self.regime_film(y, regime)         # [B, C, L]
+        features_cond, _ = self.pool(y_cond)
+
+        recon = self.recon_head(y_cond).transpose(1, 2)  # [B, L, D]
+
+        return {
+            "reconstruction": recon,
+            "features": features_cond,
+            "regime_logits": regime_logits,
+            "attention": attn,
+        }
+
+
 class PlainTCNForecaster(nn.Module):
     def __init__(self, input_dim, channels, kernel_size=3, dropout=0.2):
         super().__init__()

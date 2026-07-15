@@ -17,6 +17,7 @@ from optuna.visualization.matplotlib import (
 )
 
 from train import run_training, collect_outputs, evaluate_anomaly
+from ablations import run_ablation_trial
 from utils import load_config, seed_everything
 
 
@@ -27,15 +28,7 @@ CHANNEL_PRESETS = {
     "wide": [64, 128, 128, 256],
 }
 
-# Regime count is fixed by each dataset's physical operating-condition structure
-# (empirically confirmed via K-means silhouette/inertia), not searched by Optuna:
-#   - CBM: 9 discrete ship-speed levels (3-27 knots in 3-knot steps), clustered on
-#     [lp, v] only (excluding GTT, which is a decay-affected response, not an
-#     operating-condition input).
-#   - C-MAPSS FD001/FD003: 1 operating condition (op_setting1/2 are pure simulation
-#     noise around a single nominal point, op_setting3 is constant).
-#   - C-MAPSS FD002/FD004: 6 operating conditions (near-perfect K-means separation
-#     at k=6: inertia ~= 0, silhouette ~= 1.0).
+
 CBM_N_REGIMES = 9
 CBM_REGIME_FEATURE_IDX = [0, 1]
 CMAPSS_N_REGIMES = {"FD001": 1, "FD002": 6, "FD003": 1, "FD004": 6}
@@ -230,6 +223,10 @@ def main():
         help="C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd). Fixed for the whole study, not searched.",
     )
     parser.add_argument("--config", type = str, default = "./configs/base.yaml")
+    parser.add_argument(
+        "--target", type = str, default = "main", choices = ["main", "regime_aware_autoencoder"],
+        help = "Which model to tune: the main forecasting model, or the regime-aware-autoencoder ablation.",
+    )
     parser.add_argument("--n_trials", type = int, default = 50)
     parser.add_argument(
         "--study_name",
@@ -251,12 +248,13 @@ def main():
     base_config = load_config(args.config)
     resolved_fd = args.fd or base_config.get("data", {}).get("cmapss_fd", "FD003")
 
+    suffix = "regime_tuning" if args.target == "main" else f"{args.target}_tuning"
     if args.study_name:
         study_name = args.study_name
     elif args.dataset.upper() == "CMAPSS":
-        study_name = f"CMAPSS_{resolved_fd}_regime_tuning"
+        study_name = f"CMAPSS_{resolved_fd}_{suffix}"
     else:
-        study_name = f"{args.dataset.upper()}_regime_tuning"
+        study_name = f"{args.dataset.upper()}_{suffix}"
     run_dir = os.path.join(args.out_dir, study_name)
     trials_dir = os.path.join(run_dir, "trials")
     plots_dir = os.path.join(run_dir, "plots")
@@ -289,11 +287,13 @@ def main():
     print(f"Existing trials: {len(study.trials)}")
     print(f"New trials requested: {args.n_trials}")
 
+    trial_runner = run_trial if args.target == "main" else run_ablation_trial
+
     def objective(trial):
         trial_dir = os.path.join(trials_dir, f"trial_{trial.number:03d}")
         cfg = build_trial_config(base_config, trial, args.dataset, fd=args.fd)
         try:
-            summary = run_trial(cfg, args.dataset, trial_dir, fd=args.fd)
+            summary = trial_runner(cfg, args.dataset, trial_dir, fd=args.fd)
         except Exception as exc:
             os.makedirs(trial_dir, exist_ok=True)
             save_json({"error": str(exc)}, os.path.join(trial_dir, "error.json"))
