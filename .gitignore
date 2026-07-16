@@ -2,9 +2,13 @@ __pycache__/
 /figures
 /model
 /papers
+/Proposed Method.pdf
 CLAUDE.md
 /Claude
 /docs
 /optuna_runs
 /paper_figures.py
 /ablations.py
+/diagnostics
+/regime_mismatch_diagnostic.py
+/test_regime_mismatch_diagnostic.py
