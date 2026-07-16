@@ -215,7 +215,6 @@ def write_study_summary(study, args, run_dir):
 
 
 def main():
-    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type = str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
@@ -244,6 +243,8 @@ def main():
         help="Optional Optuna storage URL. If omitted, a dataset-specific SQLite DB is used.",
     )
     args = parser.parse_args()
+
+    seed_everything(args.seed)
 
     base_config = load_config(args.config)
     resolved_fd = args.fd or base_config.get("data", {}).get("cmapss_fd", "FD003")

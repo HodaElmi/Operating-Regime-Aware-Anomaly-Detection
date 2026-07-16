@@ -105,6 +105,9 @@ def run(dataset, config_path, threshold_percentile, fd=None, ablation_config_pat
     if ablation_config_path:
         print(f"[ablation] using separately-tuned config: {ablation_config_path}")
         ablation_config = load_config(ablation_config_path)
+        for key in ("cmapss_normal_rul", "cmapss_anomaly_rul"):
+            if key in config.get("regime", {}):
+                ablation_config["regime"][key] = config["regime"][key]
         raa_train_loader, raa_val_loader, raa_test_loader, _ = _build_loaders(dataset, ablation_config, fd=fd)
         raa_unit_ids = raa_test_loader.dataset.unit.numpy() if is_temporal else None
     else:
@@ -170,7 +173,6 @@ def run(dataset, config_path, threshold_percentile, fd=None, ablation_config_pat
 
 
 if __name__ == "__main__":
-    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default = "CMAPSS", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
@@ -184,6 +186,9 @@ if __name__ == "__main__":
                "Optuna-tuned hyperparameters). If omitted, the ablation reuses --config like every other method.",
     )
     parser.add_argument("--threshold_percentile", type = float, default = 90.0)
+    parser.add_argument("--seed", type = int, default = 42)
     args = parser.parse_args()
+
+    seed_everything(args.seed)
 
     run(args.dataset, args.config, args.threshold_percentile, fd = args.fd, ablation_config_path = args.ablation_config)

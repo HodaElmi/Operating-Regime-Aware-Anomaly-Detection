@@ -4,7 +4,6 @@ from utils import load_config, seed_everything
 
 
 def main():
-    seed_everything()
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default = "CBM", choices = ["CBM", "CMAPSS"])
     parser.add_argument(
@@ -12,7 +11,10 @@ def main():
         help = "C-MAPSS subset (CMAPSS only; overrides config.yaml's data.cmapss_fd).",
     )
     parser.add_argument("--config", type = str, default = "./configs/base.yaml")
+    parser.add_argument("--seed", type = int, default = 42)
     args = parser.parse_args()
+
+    seed_everything(args.seed)
 
     model, test_loader, criterion, device, calibration = train_tcn(args.config, args.dataset, fd=args.fd)
 
