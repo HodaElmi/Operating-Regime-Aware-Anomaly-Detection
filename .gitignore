@@ -17,3 +17,4 @@ CLAUDE.md
 /test_calibration_threshold_diagnostic.py
 /clustering_algorithm_diagnostic.py
 /test_clustering_algorithm_diagnostic.py
+/clustering_downstream_comparison.py
