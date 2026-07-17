@@ -59,7 +59,7 @@ def event_level_metrics(labels, preds, unit_ids):
     }
 
 
-def run(dataset, config_path, threshold_percentile, fd=None, ablation_config_path=None):
+def run(dataset, config_path, threshold_percentile, fd=None, ablation_config_path=None, seed=42):
     config = load_config(config_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results = {}
@@ -133,7 +133,7 @@ def run(dataset, config_path, threshold_percentile, fd=None, ablation_config_pat
 
     print(f"\n===== Fitting Isolation Forest baseline ({dataset}) =====")
     train_scores, train_labels, val_scores, val_labels, test_scores, test_labels = fit_isolation_forest(
-        train_loader, val_loader, test_loader
+        train_loader, val_loader, test_loader, seed=seed
     )
     threshold, _, _ = tune_threshold(train_scores, train_labels, val_scores, val_labels, threshold_percentile)
     results["isolation_forest"] = {
@@ -191,4 +191,4 @@ if __name__ == "__main__":
 
     seed_everything(args.seed)
 
-    run(args.dataset, args.config, args.threshold_percentile, fd = args.fd, ablation_config_path = args.ablation_config)
+    run(args.dataset, args.config, args.threshold_percentile, fd = args.fd, ablation_config_path = args.ablation_config, seed = args.seed)
