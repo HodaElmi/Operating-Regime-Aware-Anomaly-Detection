@@ -6,6 +6,7 @@ __pycache__/
 CLAUDE.md
 /Claude
 /docs
+/sweep_results
 /optuna_runs
 /paper_figures.py
 /ablations.py
@@ -14,4 +15,5 @@ CLAUDE.md
 /test_regime_mismatch_diagnostic.py
 /calibration_threshold_diagnostic.py
 /test_calibration_threshold_diagnostic.py
-/sweep_results
+/clustering_algorithm_diagnostic.py
+/test_clustering_algorithm_diagnostic.py
