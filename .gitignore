@@ -14,3 +14,4 @@ CLAUDE.md
 /test_regime_mismatch_diagnostic.py
 /calibration_threshold_diagnostic.py
 /test_calibration_threshold_diagnostic.py
+/sweep_results
