@@ -4,7 +4,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, HDBSCAN
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
@@ -225,7 +226,8 @@ class ForecastDataset(Dataset):
         return self.X[idx], self.target[idx], self.label[idx], self.regime[idx]
 
 
-def _fit_regime_model(X_for_fit, n_regimes = 3, regime_feature_idx = None, random_state = 42):
+def _fit_regime_model(X_for_fit, n_regimes = 3, regime_feature_idx = None, random_state = 42,
+                       algorithm = "kmeans", hdbscan_min_cluster_size = None, knn_n_neighbors = 5):
     if regime_feature_idx is None:
         regime_feature_idx = list(range(min(3, X_for_fit.shape[1])))
 
@@ -235,23 +237,42 @@ def _fit_regime_model(X_for_fit, n_regimes = 3, regime_feature_idx = None, rando
     scaler = StandardScaler()
     Z_train = scaler.fit_transform(X_for_fit[:, regime_feature_idx])
 
-    kmeans = KMeans(n_clusters = n_regimes, random_state=random_state, n_init = 10)
-    kmeans.fit(Z_train)
+    if algorithm == "kmeans":
+        model = KMeans(n_clusters = n_regimes, random_state=random_state, n_init = 10)
+        model.fit(Z_train)
+        knn = None
+    elif algorithm == "hdbscan":
+        if hdbscan_min_cluster_size is None:
+            raise ValueError("hdbscan_min_cluster_size is required when algorithm='hdbscan'.")
+        model = HDBSCAN(min_cluster_size=hdbscan_min_cluster_size)
+        train_labels = model.fit_predict(Z_train)
+        non_noise = train_labels != -1
+        knn = KNeighborsClassifier(n_neighbors=knn_n_neighbors)
+        knn.fit(Z_train[non_noise], train_labels[non_noise])
+    else:
+        raise ValueError(f"Unknown regime clustering algorithm '{algorithm}'.")
 
-    return scaler, kmeans, regime_feature_idx
+    return scaler, model, regime_feature_idx, knn
 
 
-def _fit_regime_model_healthy_only(X_train, y_train, n_regimes=3, regime_feature_idx=None):
+def _fit_regime_model_healthy_only(X_train, y_train, n_regimes=3, regime_feature_idx=None,
+                                    algorithm="kmeans", hdbscan_min_cluster_size=None, knn_n_neighbors=5):
     normal_idx = y_train == 0
     X_fit = X_train[normal_idx]
     if len(X_fit) < max(32, n_regimes):
         print(f"[warning] only {len(X_fit)} healthy points for regime fitting. Falling back to all non-ignored training points.")
         X_fit = X_train[y_train != IGNORE_LABEL]
-    return _fit_regime_model(X_fit, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx)
+    return _fit_regime_model(
+        X_fit, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx,
+        algorithm=algorithm, hdbscan_min_cluster_size=hdbscan_min_cluster_size,
+        knn_n_neighbors=knn_n_neighbors,
+    )
 
 
-def _predict_regimes(X, regime_scaler, regime_model, regime_feature_idx):
+def _predict_regimes(X, regime_scaler, regime_model, regime_feature_idx, regime_knn=None):
     Z = regime_scaler.transform(X[:, regime_feature_idx])
+    if regime_knn is not None:
+        return regime_knn.predict(Z)
     return regime_model.predict(Z)
 
 
@@ -271,8 +292,10 @@ def build_cbm_dataloaders(
     n_regimes = 3,
     regime_feature_idx = None,
     healthy_threshold = 0.975,
+    algorithm = "kmeans",
+    hdbscan_min_cluster_size = None,
 ):
-   
+
     if abs((split_train + split_val + split_test) - 1.0) > 1e-6:
         raise ValueError("CBM split_train + split_val + split_test must sum to 1.0")
 
@@ -311,13 +334,14 @@ def build_cbm_dataloaders(
     X_val = x_scaler.transform(X_val)
     X_test = x_scaler.transform(X_test)
 
-    regime_scaler, regime_model, regime_feature_idx = _fit_regime_model_healthy_only(
-        X_train, y_train, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx
+    regime_scaler, regime_model, regime_feature_idx, regime_knn = _fit_regime_model_healthy_only(
+        X_train, y_train, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx,
+        algorithm=algorithm, hdbscan_min_cluster_size=hdbscan_min_cluster_size,
     )
 
-    r_train = _predict_regimes(X_train, regime_scaler, regime_model, regime_feature_idx)
-    r_val = _predict_regimes(X_val, regime_scaler, regime_model, regime_feature_idx)
-    r_test = _predict_regimes(X_test, regime_scaler, regime_model, regime_feature_idx)
+    r_train = _predict_regimes(X_train, regime_scaler, regime_model, regime_feature_idx, regime_knn)
+    r_val = _predict_regimes(X_val, regime_scaler, regime_model, regime_feature_idx, regime_knn)
+    r_test = _predict_regimes(X_test, regime_scaler, regime_model, regime_feature_idx, regime_knn)
 
     Xw_train, tw_train, yw_train, rw_train = create_pointwise_samples(X_train, y_train, r_train)
     Xw_val, tw_val, yw_val, rw_val = create_pointwise_samples(X_val, y_val, r_val)
@@ -332,6 +356,7 @@ def build_cbm_dataloaders(
         "regime_scaler": regime_scaler,
         "regime_model": regime_model,
         "regime_feature_idx": regime_feature_idx,
+        "regime_knn": regime_knn,
         "healthy_threshold": healthy_threshold,
         "pointwise_cbm": True,
     }
@@ -348,6 +373,8 @@ def build_cmapss_dataloaders(
     regime_feature_idx = None,
     normal_rul = 100,
     anomaly_rul = 30,
+    algorithm = "kmeans",
+    hdbscan_min_cluster_size = None,
 ):
     (
         X_train_raw, y_train_raw, unit_train_raw,
@@ -373,13 +400,14 @@ def build_cmapss_dataloaders(
     X_val = x_scaler.transform(X_val_raw)
     X_test = x_scaler.transform(X_test_raw)
 
-    regime_scaler, regime_model, regime_feature_idx = _fit_regime_model_healthy_only(
-        X_train, y_train, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx
+    regime_scaler, regime_model, regime_feature_idx, regime_knn = _fit_regime_model_healthy_only(
+        X_train, y_train, n_regimes=n_regimes, regime_feature_idx=regime_feature_idx,
+        algorithm=algorithm, hdbscan_min_cluster_size=hdbscan_min_cluster_size,
     )
 
-    r_train = _predict_regimes(X_train, regime_scaler, regime_model, regime_feature_idx)
-    r_val = _predict_regimes(X_val, regime_scaler, regime_model, regime_feature_idx)
-    r_test = _predict_regimes(X_test, regime_scaler, regime_model, regime_feature_idx)
+    r_train = _predict_regimes(X_train, regime_scaler, regime_model, regime_feature_idx, regime_knn)
+    r_val = _predict_regimes(X_val, regime_scaler, regime_model, regime_feature_idx, regime_knn)
+    r_test = _predict_regimes(X_test, regime_scaler, regime_model, regime_feature_idx, regime_knn)
 
     Xw_train, tw_train, yw_train, rw_train, uw_train = create_forecast_windows_grouped(
         X_train, y_train, r_train, unit_train, window_size, stride
@@ -400,6 +428,7 @@ def build_cmapss_dataloaders(
         "regime_scaler": regime_scaler,
         "regime_model": regime_model,
         "regime_feature_idx": regime_feature_idx,
+        "regime_knn": regime_knn,
         "normal_rul": normal_rul,
         "anomaly_rul": anomaly_rul,
         "fd": fd.upper(),
