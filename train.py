@@ -492,6 +492,8 @@ def _build_loaders(dataset, config, fd = None):
             n_regimes=regime_cfg.get("n_regimes", 3),
             regime_feature_idx=regime_cfg.get("feature_idx", None),
             healthy_threshold=regime_cfg.get("cbm_healthy_threshold", 0.975),
+            algorithm=regime_cfg.get("clustering_algorithm", "kmeans"),
+            hdbscan_min_cluster_size=regime_cfg.get("hdbscan_min_cluster_size", None),
         )
 
     if dataset.upper() == "CMAPSS":
@@ -506,6 +508,8 @@ def _build_loaders(dataset, config, fd = None):
             regime_feature_idx=regime_cfg.get("feature_idx", None),
             normal_rul=regime_cfg.get("cmapss_normal_rul", 100),
             anomaly_rul=regime_cfg.get("cmapss_anomaly_rul", 30),
+            algorithm=regime_cfg.get("clustering_algorithm", "kmeans"),
+            hdbscan_min_cluster_size=regime_cfg.get("hdbscan_min_cluster_size", None),
         )
 
     raise ValueError(f"Unknown dataset: {dataset}")
