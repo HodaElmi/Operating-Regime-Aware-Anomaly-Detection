@@ -117,3 +117,17 @@ independently so multi-seed runs measure training variance only.
 ## Author
 
 Hoda Elmi, Lincoln AI Lab, University of Lincoln.
+
+## Citation
+
+If you use this code or build on this work, please cite:
+
+```bibtex
+@misc{elmi2026regimeaware,
+  title         = {Operating-Regime-Aware Anomaly Detection for Gas-Turbine Time Series},
+  author        = {Elmi, Hoda and Maleki, Sepehr},
+  year          = {2026},
+  howpublished  = {\url{https://github.com/HodaElmi/Operating-Regime-Aware-Anomaly-Detection}},
+  note          = {Lincoln AI Lab, University of Lincoln}
+}
+```
