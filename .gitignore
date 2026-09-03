@@ -6,7 +6,6 @@ __pycache__/
 /sweep_results
 /optuna_runs
 /tune.py
-/ablations.py
 /diagnostics
 /regime_mismatch_diagnostic.py
 /test_regime_mismatch_diagnostic.py
