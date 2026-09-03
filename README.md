@@ -92,14 +92,16 @@ pip install torch scikit-learn numpy pyyaml matplotlib seaborn optuna
 ```
 
 ## Requirements
+```bash
 torch==2.2.2
-numpy>=1.24,<2.0          # tested with 1.26.4; torch 2.2 is built against numpy 1.x
-scikit-learn>=1.3         # tested with 1.7.2; needs >=1.3 for sklearn.cluster.HDBSCAN
-pyyaml>=6.0              # config loading
-matplotlib>=3.7           # tested with 3.10.6; figure output
-cycler>=0.11             # imported directly in utils.py (also pulled in by matplotlib)
+numpy>=1.24,<2.0         
+scikit-learn>=1.3         
+pyyaml>=6.0           
+matplotlib>=3.7          
+cycler>=0.11             
 pandas>=2.0
 seaborn>=0.12
+```
 
 ## Usage
 
