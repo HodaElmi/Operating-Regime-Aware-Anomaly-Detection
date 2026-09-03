@@ -11,7 +11,7 @@ baselines that ignore regime.
 
 ## Method
 
-### Figure 1 — Model architecture
+### RA-TCN architecture
 
 ![Model architecture](Model_architecture.jpg)
 
@@ -22,7 +22,7 @@ head (`x̂_{t+1} ∈ ℝ^D`) and the reconstruction head (`x̂ ∈ ℝ^{L×D}`).
 classification head is computed from the *unconditioned* pooled features as a regularizer on the encoder.
 Training minimizes `L(θ) = w_fc·l_fc + w_rec·l_rec + w_regime·l_regime` on healthy-labeled windows only. -->
 
-### Figure 2 — Regime-specific calibration and inference
+### Regime-specific calibration and inference
 
 ![Calibration and inference](Model_inference.jpg)
 
@@ -33,13 +33,14 @@ through an optional per-regime **Mahalanobis distance**, then per-regime **media
 
 ## Datasets
 
-| Dataset | Type | Regimes | Notes |
-|---|---|---|---|
-| **UCI CBM / Naval** (`UCI CBM Dataset/data.txt`) | Steady-state design-of-experiments table (16 GT sensors + 2 decay coefficients) | 9 (ship speed, 3–27 kn in 3 kn steps) | No temporal order — each row is an independent length-1 pseudo-window; event-level metrics do not apply. Healthy = both decay coefficients above threshold. |
-| **C-MAPSS** (`CMAPSSData/{train,test,RUL}_FDxxx.txt`) | Run-to-failure engine trajectories | FD001/FD003: 1 · FD002/FD004: 6 | Labels from RUL thresholds (normal if `RUL > normal_rul`, anomaly if `RUL ≤ anomaly_rul`, else ignored). FD001/FD003 are single-regime **negative controls**. |
+| Dataset | Type | Regimes |
+|---|---|---|
+| [UCI CBM / Naval](https://archive.ics.uci.edu/dataset/316/condition+based+maintenance+of+naval+propulsion+plants) | Steady-state design-of-experiments table (16 GT sensors + 2 decay coefficients per row, no temporal order) | 9 — ship speed, 3–27 kn in 3 kn steps |
+| [C-MAPSS](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) | Run-to-failure turbofan engine trajectories, 4 subsets (FD001–FD004) | FD001/FD003: 1 · FD002/FD004: 6 |
 
-Regime counts are fixed empirically from K-means silhouette/inertia analysis of each dataset's physical
-structure — they are not tuned hyperparameters.
+CBM has no temporal order, so each row is an independent length-1 pseudo-window and event-level metrics
+do not apply. C-MAPSS labels come from RUL thresholds; FD001/FD003 are single-regime **negative controls**.
+Regime counts are fixed empirically from K-means silhouette/inertia analysis, not tuned.
 
 ## Results (5-seed sweep, mean ± std)
 
