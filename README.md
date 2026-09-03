@@ -65,19 +65,18 @@ Point-wise **ROC-AUC**:
 ## Repository structure
 
 ```
-├── main.py                  # Train + evaluate the regime-aware TCN
+├── main.py                  # Train + evaluate
 ├── inference.py             # Run scoring from a saved checkpoint
-├── tune.py                  # Optuna hyperparameter search
-├── compare.py               # Train the regime-aware model + all baselines on identical splits, print one table
+├── compare.py               # Train the regime-aware model + all baselines on identical splits
 │
 ├── data_pipeline.py         # Load + label each dataset, fit regime clustering on healthy data, build DataLoaders
-├── model.py                 # RegimeAwareTCN (TemporalBlock stack, AttentionPooling, RegimeFiLM) + regime-blind baseline nets
+├── model.py                 # RA-TCN (TemporalBlock stack, AttentionPooling, RegimeFiLM) + regime-blind baseline nets
 ├── train.py                 # Training core (healthy-only loop, early stopping), calibration, per-regime evaluation
 ├── baselines.py             # Regime-blind comparisons: PlainTCNForecaster, ConvAutoencoder, IsolationForest
 ├── event_metrics.py         # Event-level metrics (recall, detection delay, false-alarm rate) — C-MAPSS only
 ├── utils.py                 # Plotting + reproducibility (seed_everything, figure helpers)
 │
-├── configs/                 # Per-dataset YAML configs (base, cbm, fd001–fd004)
+├── configs/                 # Per-dataset YAML configs
 ├── CMAPSSData/              # C-MAPSS raw text files (train/test/RUL per subset)
 ├── UCI CBM Dataset/         # Naval propulsion condition-based-maintenance dataset
 │
@@ -87,7 +86,7 @@ Point-wise **ROC-AUC**:
 
 ## Setup
 
-Python 3.12. No lockfile — install into your environment:
+Python 3.12.
 
 ```bash
 pip install torch scikit-learn numpy pyyaml matplotlib seaborn optuna

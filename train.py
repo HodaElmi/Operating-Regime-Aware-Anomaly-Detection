@@ -376,10 +376,7 @@ def fit_reconstruction_calibration(
     val_labels = None,
     val_regimes = None,
 ):
-    """Sibling to fit_hybrid_calibration for architectures with no forecast head
-    (e.g. RegimeAwareAutoencoder): combines latent_alpha*latent_z + recon_z, with
-    no residual term since there is no forecast residual to compute one from.
-    """
+  
     latent_cov = _fit_covariance_models(features, labels, regimes, n_regimes=n_regimes)
     latent_dist = _mahalanobis_distance(features, regimes, latent_cov)
 
@@ -677,25 +674,13 @@ def train_tcn(config_path = "./config.yaml", dataset = "CBM", fd = None):
     return result["model"], result["test_loader"], result["criterion"], result["device"], result["calibration"]
 
 
+
 def _pick_representative_unit(unit_ids, labels):
-    """Picks a unit for the score-timeline figure. Prefers a unit with a genuine
-    healthy-to-anomalous transition (maximizing the smaller of its healthy/anomalous
-    window counts) over one that simply has the most anomalous windows -- the latter
-    tends to pick units whose plotted range is almost entirely inside the anomalous
-    period, with no healthy lead-in to show the score actually rising.
-    """
+
     anomalous = np.unique(unit_ids[labels == 1])
-    if len(anomalous) == 0:
-        return unit_ids[0]
-
-    def balance(u):
-        unit_labels = labels[unit_ids == u]
-        return min((unit_labels == 0).sum(), (unit_labels == 1).sum())
-
-    best = max(anomalous, key=balance)
-    if balance(best) > 0:
-        return best
-    return max(anomalous, key=lambda u: (labels[unit_ids == u] == 1).sum())
+    if len(anomalous) > 0:
+        return max(anomalous, key=lambda u: (labels[unit_ids == u] == 1).sum())
+    return unit_ids[0]
 
 
 def test_model(model, test_loader, criterion, device, calibration, dataset = "CBM", fd = None):

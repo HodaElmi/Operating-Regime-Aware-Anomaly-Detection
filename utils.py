@@ -192,17 +192,6 @@ def plot_sensor_distributions_by_regime(
     regime_axis_label="Operating regime (ordered)", title="Healthy Sensor Behavior Across Operating Regimes",
     ncols=2, rng_seed=0,
 ):
-    """Small-multiples violin+strip plot: one panel per sensor, one violin per regime,
-    ordered along the x-axis by a physically meaningful variable rather than by raw
-    (arbitrary) K-means cluster id, with a trend line through the regime medians.
-
-    X: (n_samples, n_features) array in physical units (already inverse-scaled).
-    regimes: (n_samples,) regime id per row, restricted to the population you want to
-        characterize (typically healthy samples only).
-    regime_axis: (n_samples,) optional physical variable (e.g. ship speed, an operating
-        setting) used both to order regimes left-to-right and to label the x-ticks with
-        their physical value. Falls back to raw regime id if not provided.
-    """
     X = np.asarray(X)
     regimes = np.asarray(regimes)
     regime_ids = np.unique(regimes).tolist()
@@ -308,7 +297,6 @@ def plot_roc_curve(labels, scores, save_path, label="model"):
 
 
 def plot_roc_comparison(results, save_path):
-    """results: dict[method_name] -> {'labels': array, 'scores': array}."""
     fig, ax = plt.subplots(figsize=(4.2, 4.0))
     for name, r in results.items():
         fpr, tpr, _ = roc_curve(r["labels"], r["scores"])
@@ -353,10 +341,6 @@ def plot_method_comparison_bars(metrics_by_method, save_path, metric_keys=("prec
 def plot_method_comparison_bars_with_error(
     metrics_by_method, save_path, metric_keys=("f1", "roc_auc"), title="Method Comparison (mean $\\pm$ std over 5 seeds)",
 ):
-    """Sibling to plot_method_comparison_bars for sweep-derived results: metrics_by_method
-    is dict[method] -> dict[metric_key] -> (mean, std), plotted with error bars instead of
-    single-run point estimates.
-    """
     methods = list(metrics_by_method.keys())
     n_metrics = len(metric_keys)
     x = np.arange(len(methods))
@@ -386,10 +370,6 @@ def plot_method_comparison_bars_with_error(
 
 
 def plot_reconstruction_error_distributions(film_errors, nofilm_errors, labels, save_path, title, film_label="Regime-aware (FiLM)", nofilm_label="Regime-blind"):
-    """Compares raw reconstruction-error distributions (healthy vs. anomaly) between a
-    FiLM-conditioned and a regime-blind autoencoder on identical windows -- the evidence
-    for whether regime-conditioning degrades or preserves reconstruction-based separability.
-    """
     labels = np.asarray(labels)
     fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.6), sharey=False)
 

@@ -1,9 +1,3 @@
-"""Baselines for the regime-aware TCN: a regime-blind forecaster, a
-reconstruction autoencoder, and a classical unsupervised detector. All three
-train on healthy data only and are thresholded the same way as the
-regime-aware model (see train.tune_threshold), so comparisons are fair.
-"""
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -69,9 +63,6 @@ def _train_healthy_only(model, train_loader, val_loader, train_cfg, device, loss
 
 
 def train_global_forecaster(train_loader, val_loader, input_dim, model_cfg, train_cfg, device):
-    """Regime-blind TCN forecaster: same architecture idea as the regime-aware
-    model, but no regime clustering, conditioning, or per-regime calibration.
-    """
     model = PlainTCNForecaster(
         input_dim, model_cfg["channels"], model_cfg["kernel_size"], model_cfg["dropout"]
     ).to(device)
@@ -91,7 +82,6 @@ def score_forecaster(model, loader, device):
 
 
 def train_autoencoder(train_loader, val_loader, input_dim, model_cfg, train_cfg, device):
-    """Reconstruction-based baseline, scored by reconstruction MSE."""
     model = ConvAutoencoder(
         input_dim, model_cfg["channels"], model_cfg["kernel_size"], model_cfg["dropout"]
     ).to(device)
@@ -111,10 +101,6 @@ def score_autoencoder(model, loader, device):
 
 
 def fit_isolation_forest(train_loader, val_loader, test_loader, seed=42):
-    """Classical unsupervised detector, fit on the healthy sensor vectors
-    (the same per-step target the forecasters predict), scored by negative
-    anomaly score (higher = more anomalous).
-    """
     def target_and_label(loader):
         return loader.dataset.target.numpy(), loader.dataset.label.numpy()
 

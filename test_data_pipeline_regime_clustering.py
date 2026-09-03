@@ -52,7 +52,7 @@ class TestFitRegimeModel(unittest.TestCase):
 class TestFitRegimeModelHealthyOnly(unittest.TestCase):
     def test_threads_algorithm_through(self):
         X = _three_blobs()
-        y = np.zeros(len(X), dtype=int)  # all "healthy"
+        y = np.zeros(len(X), dtype=int)
         scaler, model, feat_idx, knn = _fit_regime_model_healthy_only(
             X, y, n_regimes=3, regime_feature_idx=[0, 1],
             algorithm="hdbscan", hdbscan_min_cluster_size=5,
@@ -80,7 +80,7 @@ class TestPredictRegimes(unittest.TestCase):
 
         Z = scaler.transform(X[:, feat_idx])
         fake_knn = KNeighborsClassifier(n_neighbors=1)
-        fake_knn.fit(Z, model.labels_)  # real, non-trivial labels
+        fake_knn.fit(Z, model.labels_)  
 
         result = _predict_regimes(X, scaler, _AlwaysZero(), feat_idx, regime_knn=fake_knn)
         np.testing.assert_array_equal(result, fake_knn.predict(Z))
