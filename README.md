@@ -1,7 +1,6 @@
 # Operating-Regime-Aware Anomaly Detection for Gas-Turbine Time Series
 
-Anomaly detection for gas turbine sensor streams that models normal behavior **relative to the operating
-regime** (load, speed, control state) rather than globally, and calibrates alarm thresholds **per regime**.
+Regime-aware Temporal Convolutional Network (RA-TCN) architecture that models normal behavior on gas turbine time series data **relative to the operating regime** (load, speed, control state) rather than globally, and calibrates alarm thresholds **per regime**.
 A temporal convolutional network (TCN) forecasts next-step sensor state from healthy data only. Anomalies
 are flagged from regime-normalized deviations between predicted and observed behavior, not from a single
 global threshold. Evaluated against regime-blind baselines on the Naval/CBM and C-MAPSS datasets.
@@ -46,7 +45,7 @@ structure — they are not tuned hyperparameters.
 
 Point-wise **F1**:
 
-| Dataset | Regime-Aware TCN | Regime-Aware AE (ablation) | Global TCN Forecaster | TCN Autoencoder | Isolation Forest |
+| Dataset | RA-TCN| Regime-Aware AE | Global TCN Forecaster | TCN Autoencoder | Isolation Forest |
 |---|---|---|---|---|---|
 | CBM   | **0.912 ± 0.015** | 0.906 ± 0.015 | 0.827 ± 0.021 | 0.800 ± 0.057 | 0.799 ± 0.010 |
 | FD001 | **0.983 ± 0.010** | 0.721 ± 0.055 | 0.528 ± 0.069 | 0.752 ± 0.014 | 0.953 ± 0.015 |
@@ -56,7 +55,7 @@ Point-wise **F1**:
 
 Point-wise **ROC-AUC**:
 
-| Dataset | Regime-Aware TCN | Regime-Aware AE (ablation) | Global TCN Forecaster | TCN Autoencoder | Isolation Forest |
+| Dataset | RA-TCN| Regime-Aware AE | Global TCN Forecaster | TCN Autoencoder | Isolation Forest |
 |---|---|---|---|---|---|
 | CBM   | 0.974 ± 0.007 | 0.968 ± 0.008 | 0.905 ± 0.017 | 0.867 ± 0.073 | 0.846 ± 0.008 |
 | FD001 | 1.000 ± 0.000 | 0.966 ± 0.013 | 0.892 ± 0.044 | 0.972 ± 0.003 | 0.999 ± 0.000 |
@@ -64,10 +63,7 @@ Point-wise **ROC-AUC**:
 | FD003 | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.977 ± 0.004 | 0.999 ± 0.001 | 1.000 ± 0.000 |
 | FD004 | 0.994 ± 0.001 | 0.955 ± 0.014 | 0.510 ± 0.009 | 0.902 ± 0.013 | 0.947 ± 0.011 |
 
-Regime-Aware TCN is the only method with tight, low-variance F1 across every dataset (std ≤ 0.015).
-Its advantage is statistically significant (paired *t*-test, p < 0.05) over every baseline on every
-dataset except CBM vs. the regime-aware autoencoder ablation — expected, since CBM's length-1
-pseudo-windows make forecasting and reconstruction nearly the same task.
+
 
 ## Repository structure
 
@@ -89,7 +85,7 @@ pseudo-windows make forecasting and reconstruction nearly the same task.
 ├── UCI CBM Dataset/         # Naval propulsion condition-based-maintenance dataset
 │
 ├── test_data_pipeline_regime_clustering.py   # Unit tests (python -m unittest)
-└── data.ipynb              # Legacy exploratory notebook (not used by the pipeline)
+└── data.ipynb              # Exploratory notebook (not used by the pipeline)
 ```
 
 ## Setup
@@ -122,6 +118,6 @@ python compare.py --dataset CMAPSS --fd FD002 --config ./configs/fd002.yaml
 `--seed` (default 42) controls model-init/training stochasticity; the train/val/test split is fixed
 independently so multi-seed runs measure training variance only.
 
-## Authors
+## Author
 
 Hoda Elmi, Lincoln AI Lab, University of Lincoln.

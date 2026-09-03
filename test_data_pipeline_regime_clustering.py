@@ -19,7 +19,7 @@ class TestFitRegimeModel(unittest.TestCase):
         X = _three_blobs()
         scaler_a, model_a, feat_idx_a, knn_a = _fit_regime_model(X, n_regimes=3, regime_feature_idx=[0, 1])
         scaler_b, model_b, feat_idx_b, knn_b = _fit_regime_model(
-            X, n_regimes=3, regime_feature_idx=[0, 1], algorithm="kmeans"
+            X, n_regimes=3, regime_feature_idx=[0, 1], algorithm = "kmeans"
         )
         np.testing.assert_array_equal(model_a.labels_, model_b.labels_)
         np.testing.assert_array_almost_equal(model_a.cluster_centers_, model_b.cluster_centers_)
