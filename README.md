@@ -80,7 +80,6 @@ Point-wise **ROC-AUC**:
 ├── CMAPSSData/              # C-MAPSS raw text files (train/test/RUL per subset)
 ├── UCI CBM Dataset/         # Naval propulsion condition-based-maintenance dataset
 │
-├── test_data_pipeline_regime_clustering.py   # Unit tests (python -m unittest)
 └── data.ipynb              # Exploratory notebook (not used by the pipeline)
 ```
 
@@ -91,6 +90,16 @@ Python 3.12.
 ```bash
 pip install torch scikit-learn numpy pyyaml matplotlib seaborn optuna
 ```
+
+## Requirements
+torch==2.2.2
+numpy>=1.24,<2.0          # tested with 1.26.4; torch 2.2 is built against numpy 1.x
+scikit-learn>=1.3         # tested with 1.7.2; needs >=1.3 for sklearn.cluster.HDBSCAN
+pyyaml>=6.0              # config loading
+matplotlib>=3.7           # tested with 3.10.6; figure output
+cycler>=0.11             # imported directly in utils.py (also pulled in by matplotlib)
+pandas>=2.0
+seaborn>=0.12
 
 ## Usage
 
@@ -103,8 +112,6 @@ python main.py --dataset CMAPSS --fd FD002 --config ./configs/fd002.yaml
 python inference.py --dataset CMAPSS --fd FD002 \
     --checkpoint ./model/best_cmapss_fd002_regime_tcn.ckpt --config ./configs/fd002.yaml
 
-# Hyperparameter search (Optuna) → ./optuna_runs/<study_name>/
-python tune.py --dataset CMAPSS --fd FD002 --config ./configs/fd002.yaml --n_trials 50
 
 # Train the regime-aware model AND all baselines on identical splits, print one comparison table
 python compare.py --dataset CMAPSS --fd FD002 --config ./configs/fd002.yaml
