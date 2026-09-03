@@ -678,11 +678,24 @@ def train_tcn(config_path = "./config.yaml", dataset = "CBM", fd = None):
 
 
 def _pick_representative_unit(unit_ids, labels):
-
+    """Picks a unit for the score-timeline figure. Prefers a unit with a genuine
+    healthy-to-anomalous transition (maximizing the smaller of its healthy/anomalous
+    window counts) over one that simply has the most anomalous windows -- the latter
+    tends to pick units whose plotted range is almost entirely inside the anomalous
+    period, with no healthy lead-in to show the score actually rising.
+    """
     anomalous = np.unique(unit_ids[labels == 1])
-    if len(anomalous) > 0:
-        return max(anomalous, key=lambda u: (labels[unit_ids == u] == 1).sum())
-    return unit_ids[0]
+    if len(anomalous) == 0:
+        return unit_ids[0]
+
+    def balance(u):
+        unit_labels = labels[unit_ids == u]
+        return min((unit_labels == 0).sum(), (unit_labels == 1).sum())
+
+    best = max(anomalous, key=balance)
+    if balance(best) > 0:
+        return best
+    return max(anomalous, key=lambda u: (labels[unit_ids == u] == 1).sum())
 
 
 def test_model(model, test_loader, criterion, device, calibration, dataset = "CBM", fd = None):

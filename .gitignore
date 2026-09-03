@@ -4,7 +4,9 @@ __pycache__/
 /papers
 /Proposed Method.pdf
 CLAUDE.md
+draft.md
 /Claude
+/.claude
 /docs
 /sweep_results
 /optuna_runs
@@ -18,3 +20,15 @@ CLAUDE.md
 /clustering_algorithm_diagnostic.py
 /test_clustering_algorithm_diagnostic.py
 /clustering_downstream_comparison.py
+/reconstruction_comparison_diagnostic.py
+/test_reconstruction_comparison_diagnostic.py
+/hyperparameter_ablation.py
+/test_hyperparameter_ablation.py
+/paper_tables
+/balanced_accuracy_comparison.py
+/paper
+/benchmark_survey.md
+/benchmark_survey.tex
+/methodology_comparison.md
+/methodology_comparison.tex
+/test_data_pipeline_regime_clustering.py

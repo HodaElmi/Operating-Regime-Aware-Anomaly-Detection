@@ -350,3 +350,63 @@ def plot_method_comparison_bars(metrics_by_method, save_path, metric_keys=("prec
     plt.close(fig)
 
 
+def plot_method_comparison_bars_with_error(
+    metrics_by_method, save_path, metric_keys=("f1", "roc_auc"), title="Method Comparison (mean $\\pm$ std over 5 seeds)",
+):
+    """Sibling to plot_method_comparison_bars for sweep-derived results: metrics_by_method
+    is dict[method] -> dict[metric_key] -> (mean, std), plotted with error bars instead of
+    single-run point estimates.
+    """
+    methods = list(metrics_by_method.keys())
+    n_metrics = len(metric_keys)
+    x = np.arange(len(methods))
+    width = 0.8 / n_metrics
+
+    fig, ax = plt.subplots(figsize=(max(4.5, len(methods) * 1.4), 3.6))
+    for i, key in enumerate(metric_keys):
+        values = [metrics_by_method[m][key][0] for m in methods]
+        errors = [metrics_by_method[m][key][1] for m in methods]
+        label = METRIC_DISPLAY_NAMES.get(key, key)
+        ax.bar(
+            x + i * width, values, width, yerr=errors, capsize=2.5,
+            error_kw={"elinewidth": 0.9, "ecolor": "black", "alpha": 0.7},
+            label=label, color=PALETTE[i % len(PALETTE)], edgecolor="white", linewidth=0.4,
+        )
+
+    ax.set_xticks(x + width * (n_metrics - 1) / 2)
+    ax.set_xticklabels(methods, rotation=20, ha="right")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0, 1.05)
+    ax.set_title(title)
+    ax.legend(ncol=len(metric_keys), loc="upper center", bbox_to_anchor=(0.5, -0.30), fontsize=8)
+    ax.grid(axis="y")
+    fig.tight_layout()
+    fig.savefig(save_path)
+    plt.close(fig)
+
+
+def plot_reconstruction_error_distributions(film_errors, nofilm_errors, labels, save_path, title, film_label="Regime-aware (FiLM)", nofilm_label="Regime-blind"):
+    """Compares raw reconstruction-error distributions (healthy vs. anomaly) between a
+    FiLM-conditioned and a regime-blind autoencoder on identical windows -- the evidence
+    for whether regime-conditioning degrades or preserves reconstruction-based separability.
+    """
+    labels = np.asarray(labels)
+    fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.6), sharey=False)
+
+    for ax, errors, subtitle in ((axes[0], film_errors, film_label), (axes[1], nofilm_errors, nofilm_label)):
+        errors = np.asarray(errors)
+        bins = np.linspace(0, np.quantile(errors, 0.995), 60)
+        ax.hist(errors[labels == 0], bins=bins, alpha=0.6, density=True, color=PALETTE[0], edgecolor="white", linewidth=0.2, label="Healthy")
+        ax.hist(errors[labels == 1], bins=bins, alpha=0.6, density=True, color=PALETTE[1], edgecolor="white", linewidth=0.2, label="Anomaly")
+        ax.set_title(subtitle, fontsize=11)
+        ax.set_xlabel("Raw reconstruction error")
+        ax.grid(axis="y")
+        ax.legend()
+
+    axes[0].set_ylabel("Density")
+    fig.suptitle(title)
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    fig.savefig(save_path)
+    plt.close(fig)
+
+
