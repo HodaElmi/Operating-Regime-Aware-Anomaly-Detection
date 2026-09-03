@@ -13,7 +13,7 @@ baselines that ignore regime.
 
 ### Figure 1 — Model architecture
 
-![Model architecture](Model_architecture.pdf)
+![Model architecture](Model_architecture.jpg)
 
 <!-- A dilated **Temporal Block** stack encodes the input window `x ∈ ℝ^{L×D}`. The known regime id `r`
 (precomputed by K-means clustering on healthy training data) conditions the shared temporal features
@@ -24,7 +24,7 @@ Training minimizes `L(θ) = w_fc·l_fc + w_rec·l_rec + w_regime·l_regime` on h
 
 ### Figure 2 — Regime-specific calibration and inference
 
-![Calibration and inference](Model_inference.pdf)
+![Calibration and inference](Model_inference.jpg)
 
 <!-- The forecast residual `e`, reconstruction error `c = l_rec`, and pooled latent feature `φ'` each pass
 through an optional per-regime **Mahalanobis distance**, then per-regime **median/MAD normalization**
