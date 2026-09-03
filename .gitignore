@@ -3,16 +3,9 @@ __pycache__/
 /figures
 /model
 /papers
-/Proposed Method.pdf
-CLAUDE.md
-draft.md
-/Claude
-/.claude
-/docs
 /sweep_results
 /optuna_runs
 /tune.py
-/paper_figures.py
 /ablations.py
 /diagnostics
 /regime_mismatch_diagnostic.py
@@ -29,8 +22,4 @@ draft.md
 /paper_tables
 /balanced_accuracy_comparison.py
 /paper
-/benchmark_survey.md
-/benchmark_survey.tex
-/methodology_comparison.md
-/methodology_comparison.tex
 /test_data_pipeline_regime_clustering.py
