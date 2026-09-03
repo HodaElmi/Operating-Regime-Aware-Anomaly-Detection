@@ -11,6 +11,7 @@ draft.md
 /docs
 /sweep_results
 /optuna_runs
+/tune.py
 /paper_figures.py
 /ablations.py
 /diagnostics

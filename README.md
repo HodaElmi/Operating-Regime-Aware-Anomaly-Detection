@@ -33,14 +33,10 @@ through an optional per-regime **Mahalanobis distance**, then per-regime **media
 
 ## Datasets
 
-| Dataset | Type | Regimes |
+| Dataset | Description | Regimes |
 |---|---|---|
 | [UCI CBM / Naval](https://archive.ics.uci.edu/dataset/316/condition+based+maintenance+of+naval+propulsion+plants) | Steady-state design-of-experiments table (16 GT sensors + 2 decay coefficients per row, no temporal order) | 9 — ship speed, 3–27 kn in 3 kn steps |
-| [C-MAPSS](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) | Run-to-failure turbofan engine trajectories, 4 subsets (FD001–FD004) | FD001/FD003: 1 · FD002/FD004: 6 |
-
-CBM has no temporal order, so each row is an independent length-1 pseudo-window and event-level metrics
-do not apply. C-MAPSS labels come from RUL thresholds; FD001/FD003 are single-regime **negative controls**.
-Regime counts are fixed empirically from K-means silhouette/inertia analysis, not tuned.
+| [C-MAPSS](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) | Run-to-failure turbofan engine trajectories, 4 subsets (FD001–FD004) | FD001/FD003: 1  FD002/FD004: 6 |
 
 ## Results (5-seed sweep, mean ± std)
 
@@ -58,11 +54,11 @@ Point-wise **ROC-AUC**:
 
 | Dataset | RA-TCN| Regime-Aware AE | Global TCN Forecaster | TCN Autoencoder | Isolation Forest |
 |---|---|---|---|---|---|
-| CBM   | 0.974 ± 0.007 | 0.968 ± 0.008 | 0.905 ± 0.017 | 0.867 ± 0.073 | 0.846 ± 0.008 |
-| FD001 | 1.000 ± 0.000 | 0.966 ± 0.013 | 0.892 ± 0.044 | 0.972 ± 0.003 | 0.999 ± 0.000 |
-| FD002 | 0.970 ± 0.002 | 0.913 ± 0.009 | 0.493 ± 0.008 | 0.937 ± 0.055 | 0.894 ± 0.008 |
-| FD003 | 1.000 ± 0.000 | 0.999 ± 0.000 | 0.977 ± 0.004 | 0.999 ± 0.001 | 1.000 ± 0.000 |
-| FD004 | 0.994 ± 0.001 | 0.955 ± 0.014 | 0.510 ± 0.009 | 0.902 ± 0.013 | 0.947 ± 0.011 |
+| CBM   | **0.974 ± 0.007** | 0.968 ± 0.008 | 0.905 ± 0.017 | 0.867 ± 0.073 | 0.846 ± 0.008 |
+| FD001 | **1.000 ± 0.000** | 0.966 ± 0.013 | 0.892 ± 0.044 | 0.972 ± 0.003 | 0.999 ± 0.000 |
+| FD002 | **0.970 ± 0.002** | 0.913 ± 0.009 | 0.493 ± 0.008 | 0.937 ± 0.055 | 0.894 ± 0.008 |
+| FD003 | **1.000 ± 0.000** | 0.999 ± 0.000 | 0.977 ± 0.004 | 0.999 ± 0.001 | 1.000 ± 0.000 |
+| FD004 | **0.994 ± 0.001** | 0.955 ± 0.014 | 0.510 ± 0.009 | 0.902 ± 0.013 | 0.947 ± 0.011 |
 
 
 
